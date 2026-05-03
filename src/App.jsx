@@ -207,7 +207,7 @@ const Nav = ({ page, setPage }) => {
   return (
     <>
       <nav style={{ position: "fixed", top: 0, left: 0, right: 0, zIndex: 1000, background: scrolled ? "rgba(251,248,243,0.95)" : "transparent", backdropFilter: scrolled ? "blur(12px)" : "none", borderBottom: scrolled ? `1px solid ${T.border}` : "1px solid transparent", transition: "all 0.4s ease", padding: scrolled ? "12px 0" : "20px 0" }}>
-        <div style={{ maxWidth: "1140px", margin: "0 auto", padding: "0 24px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div style={{ maxWidth: "1400px", margin: "0 auto", padding: "0 24px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div onClick={() => { setPage("Home"); window.scrollTo(0, 0); }} style={{ cursor: "pointer", display: "flex", alignItems: "center", gap: "10px" }}>
             {Icons.wheat}
             <span style={{ fontFamily: "'Fraunces', serif", fontSize: "22px", fontWeight: 600, color: T.brown }}>Taylor Mountain Bakery</span>
@@ -236,7 +236,7 @@ const Nav = ({ page, setPage }) => {
 /* ═══════════════════════  FOOTER  ═══════════════════════ */
 const Footer = ({ setPage, pendingCount }) => (
   <footer style={{ background: T.brown, color: T.woodLight, padding: "64px 24px 32px" }}>
-    <div style={{ maxWidth: "1140px", margin: "0 auto", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "40px" }}>
+    <div style={{ maxWidth: "1400px", margin: "0 auto", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "40px" }}>
       <div>
         <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "16px" }}>
           <svg width="28" height="28" viewBox="0 0 32 32" fill="none"><rect x="10" y="9" width="12" height="8" rx="1.5" fill={T.woodLight} stroke={T.wood} strokeWidth="1.3"/><path d="M11.5 9h9a1.5 1.5 0 011.5 1.5V13H10v-2.5A1.5 1.5 0 0111.5 9z" fill={T.blueSoft}/><rect x="7" y="16.5" width="18" height="9" rx="1.5" fill={T.woodLight} stroke={T.wood} strokeWidth="1.3"/><path d="M8.5 16.5h15a1.5 1.5 0 011.5 1.5V21H7v-3a1.5 1.5 0 011.5-1.5z" fill={T.blueSoft}/><path d="M10 12.5c1.5-.6 3.5-1 6-1s4.5.4 6 1" stroke={T.woodDark} strokeWidth="1" fill="none" strokeLinecap="round"/><path d="M7 20.5c2.5-.8 5.5-1.2 9-1.2s6.5.4 9 1.2" stroke={T.woodDark} strokeWidth="1" fill="none" strokeLinecap="round"/></svg>
@@ -266,7 +266,7 @@ const Footer = ({ setPage, pendingCount }) => (
         </button>
       </div>
     </div>
-    <div style={{ maxWidth: "1140px", margin: "48px auto 0", paddingTop: "24px", borderTop: "1px solid rgba(255,255,255,0.08)", textAlign: "center", fontFamily: "Outfit, sans-serif", fontSize: "13px", color: T.brownLight }}>© 2026 Taylor Mountain Bakery · Made with love in our small town</div>
+    <div style={{ maxWidth: "1400px", margin: "48px auto 0", paddingTop: "24px", borderTop: "1px solid rgba(255,255,255,0.08)", textAlign: "center", fontFamily: "Outfit, sans-serif", fontSize: "13px", color: T.brownLight }}>© 2026 Taylor Mountain Bakery · Made with love in our small town</div>
   </footer>
 );
 
@@ -287,7 +287,7 @@ const HomePage = ({ setPage }) => (
       </div>
     </section>
     <section style={{ padding: "96px 24px", background: T.white }}>
-      <div style={{ maxWidth: "1140px", margin: "0 auto" }}>
+      <div style={{ maxWidth: "1400px", margin: "0 auto" }}>
         <SectionTitle badge="Our Specialties" title="What We Bake" subtitle="From classic chocolate chip cookies to buttery croissants, every treat is made from scratch with quality ingredients." />
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))", gap: "24px" }}>
           {[{ icon: Icons.cookie, title: "Cookies", desc: "Classic favorites and creative flavors, baked golden and chewy. Perfect by the dozen for any occasion.", items: ["Chocolate Chip", "Sugar Cookies", "Snickerdoodle", "Seasonal Specials"] }, { icon: Icons.cupcake, title: "Cupcakes", desc: "Fluffy, flavorful and beautifully topped. Available in a variety of flavors with custom decorating options.", items: ["Vanilla Bean", "Rich Chocolate", "Red Velvet", "Lemon Blueberry"] }, { icon: Icons.cake, title: "Custom Cakes", desc: "Designed just for you. Birthday cakes, celebration cakes, and everything in between — made to order.", items: ["Birthday Cakes", "Celebration Cakes", "Themed Designs", "All Sizes"] }, { icon: Icons.pastry, title: "Pastries & More", desc: "From flaky croissants to sweet confections, we're always exploring new creations fresh from the oven.", items: ["Croissants", "Cinnamon Rolls", "Danishes", "Sweet Confections"] }].map((item) => (
@@ -309,7 +309,7 @@ const HomePage = ({ setPage }) => (
       </div>
     </section>
     <section style={{ padding: "96px 24px", background: `linear-gradient(135deg, ${T.blueSoft} 0%, ${T.white} 50%, ${T.woodLight} 100%)`, textAlign: "center" }}>
-      <div style={{ maxWidth: "600px", margin: "0 auto" }}>
+      <div style={{ maxWidth: "800px", margin: "0 auto" }}>
         <h2 style={{ fontFamily: "'Fraunces', serif", fontSize: "clamp(28px, 5vw, 40px)", fontWeight: 500, color: T.brown, marginBottom: "16px" }}>Ready to Order Something Sweet?</h2>
         <p style={{ fontFamily: "Outfit, sans-serif", fontSize: "16px", color: T.brownSoft, lineHeight: 1.7, marginBottom: "32px" }}>Whether it's a dozen cookies for Friday night, fresh croissants for brunch, or a custom cake for a special celebration, we'd love to bake for you.</p>
         <Btn onClick={() => { setPage("Order"); window.scrollTo(0, 0); }}>Place Your Order</Btn>
@@ -350,8 +350,8 @@ const GalleryPage = ({ setPage }) => {
         </div>
       </section>
       <section style={{ padding: "0 24px 96px", background: T.cream }}>
-        <div style={{ maxWidth: "1140px", margin: "0 auto" }}>
-          <div style={{ columns: "3 280px", columnGap: "20px" }}>
+        <div style={{ maxWidth: "1400px", margin: "0 auto" }}>
+          <div style={{ columns: "4 280px", columnGap: "20px" }}>
             {filtered.map((item, idx) => (
               <div key={item.id} onClick={() => setSel(item)} style={{ breakInside: "avoid", marginBottom: "20px", borderRadius: "14px", overflow: "hidden", cursor: "pointer", transition: "transform 0.3s, box-shadow 0.3s", border: `1px solid ${T.border}`, background: T.white }} onMouseEnter={(e) => { e.currentTarget.style.transform = "translateY(-4px)"; e.currentTarget.style.boxShadow = "0 12px 40px rgba(61,50,41,0.1)"; }} onMouseLeave={(e) => { e.currentTarget.style.transform = ""; e.currentTarget.style.boxShadow = ""; }}>
                 <div style={{ height: `${heights[idx % heights.length]}px`, background: item.color, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", position: "relative" }}>
@@ -421,7 +421,7 @@ const ReviewsPage = ({ setPage, reviewsHook }) => {
         <p style={{ fontFamily: "Outfit, sans-serif", fontSize: "16px", color: T.brownSoft, maxWidth: "500px", margin: "0 auto 40px", lineHeight: 1.7 }}>Don't just take our word for it — hear from the folks in our community.</p>
       </section>
       <section style={{ padding: "48px 24px 96px", background: T.cream }}>
-        <div style={{ maxWidth: "960px", margin: "0 auto" }}>
+        <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
           {/* Auto-calculated stats */}
           <div style={{ background: T.white, borderRadius: "16px", padding: "32px 40px", border: `1px solid ${T.border}`, marginBottom: "48px", display: "flex", alignItems: "center", justifyContent: "center", gap: "48px", flexWrap: "wrap" }}>
             <div style={{ textAlign: "center" }}>
@@ -553,7 +553,7 @@ const AdminPage = ({ reviewsHook, setPage }) => {
       </section>
 
       <section style={{ padding: "40px 24px 96px", background: T.cream }}>
-        <div style={{ maxWidth: "960px", margin: "0 auto" }}>
+        <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
           {/* Quick stats */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: "16px", marginBottom: "32px" }}>
             {[
@@ -684,7 +684,7 @@ const OrderPage = () => {
         <p style={{ fontFamily: "Outfit, sans-serif", fontSize: "16px", color: T.brownSoft, maxWidth: "500px", margin: "0 auto", lineHeight: 1.7 }}>Fill out the form below and we'll get back to you within 24 hours.</p>
       </section>
       <section style={{ padding: "60px 24px 96px", background: T.cream }}>
-        <div style={{ maxWidth: "680px", margin: "0 auto" }}>
+        <div style={{ maxWidth: "900px", margin: "0 auto" }}>
           <div style={{ background: T.white, borderRadius: "16px", padding: "32px", border: `1px solid ${T.border}`, marginBottom: "40px", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: "24px" }}>
             {[{ step: "1", title: "Submit", desc: "Fill out the order form" }, { step: "2", title: "Confirm", desc: "We'll reply within 24hrs" }, { step: "3", title: "Enjoy", desc: "Pick up your fresh treats" }].map((s) => (
               <div key={s.step} style={{ textAlign: "center" }}>
@@ -738,7 +738,7 @@ const AboutPage = ({ setPage }) => (
       <p style={{ fontFamily: "Outfit, sans-serif", fontSize: "16px", color: T.brownSoft, maxWidth: "500px", margin: "0 auto 48px", lineHeight: 1.7 }}>A small-town bakery with a big heart, started by a high school junior with a passion for baking.</p>
     </section>
     <section style={{ padding: "80px 24px", background: T.cream }}>
-      <div style={{ maxWidth: "860px", margin: "0 auto" }}>
+      <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
         <div style={{ background: T.white, borderRadius: "16px", padding: "48px 40px", border: `1px solid ${T.border}`, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: "40px", alignItems: "center", marginBottom: "32px" }}>
           <div>
             <div style={{ marginBottom: "16px" }}>{Icons.wheat}</div>
@@ -780,11 +780,11 @@ const ContactPage = () => {
         <p style={{ fontFamily: "Outfit, sans-serif", fontSize: "16px", color: T.brownSoft, maxWidth: "500px", margin: "0 auto 48px", lineHeight: 1.7 }}>Have a question or need help with an order? We'd love to hear from you!</p>
       </section>
       <section style={{ padding: "60px 24px 96px", background: T.cream }}>
-        <div style={{ maxWidth: "960px", margin: "0 auto", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: "40px" }}>
+        <div style={{ maxWidth: "1200px", margin: "0 auto", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: "40px" }}>
           <div>
             <h3 style={{ fontFamily: "'Fraunces', serif", fontSize: "24px", fontWeight: 500, color: T.brown, marginBottom: "28px" }}>Let's Connect</h3>
             <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
-              {[{ icon: Icons.mail, label: "Email", value: "taylor.mtn.bakery@gmail.com", href: "mailto:taylor.mtn.bakery@gmail.com" }, { icon: Icons.pin, label: "Location", value: "Our Small Town, USA" }].map((c) => (
+              {[{ icon: Icons.mail, label: "Email", value: "taylor.mtn.bakery@gmail.com", href: "mailto:taylor.mtn.bakery@gmail.com" }, { icon: Icons.pin, label: "Location", value: "Vernal, UT USA" }].map((c) => (
                 <div key={c.label} style={{ display: "flex", gap: "16px", alignItems: "flex-start" }}>
                   <div style={{ width: "48px", height: "48px", borderRadius: "12px", background: T.blueSoft, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{c.icon}</div>
                   <div>
