@@ -1,0 +1,7 @@
+# Cloudflare Pages configuration
+name = "taylor-mountain-bakery"
+compatibility_date = "2024-09-23"
+pages_build_output_dir = "dist"
+
+[build]
+command = "npm run build"
