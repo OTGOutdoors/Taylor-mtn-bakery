@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { createClient } from "@supabase/supabase-js";
 
 /* ─── palette & tokens ─── */
 const T = {
@@ -10,14 +11,11 @@ const T = {
 
 /* ─── CONFIG: Replace these to activate email features ─── */
 const CONFIG = {
-  EMAILJS_SERVICE_ID: "YOUR_SERVICE_ID",
-  EMAILJS_TEMPLATE_ID: "YOUR_TEMPLATE_ID",             // order notification → owner
-  EMAILJS_ORDER_CONFIRM_ID: "YOUR_ORDER_CONFIRM_ID",   // order confirmation → customer
-  EMAILJS_REVIEW_ALERT_ID: "YOUR_REVIEW_ALERT_ID",     // low-review alert → owner
-  EMAILJS_REVIEW_THANKS_ID: "YOUR_REVIEW_THANKS_ID",   // review thank-you → customer
-  EMAILJS_PUSHBACK_ID: "YOUR_PUSHBACK_ID",             // push-back → customer
-  EMAILJS_PUBLIC_KEY: "YOUR_PUBLIC_KEY",
-  ADMIN_PASSWORD: "Ilove2bake!",  // Change this!
+  EMAILJS_SERVICE_ID: "service_7tzdv3m",
+  EMAILJS_TEMPLATE_ID: "template_svhq4ql",             // order notification → owner
+  EMAILJS_ORDER_CONFIRM_ID: "template_jita741",         // order confirmation → customer
+  EMAILJS_PUBLIC_KEY: "S8Y5K6z_e8e5GqjJG",
+  ADMIN_PASSWORD: "Ilove2bake!",
   OWNER_EMAIL: "taylor.mtn.bakery@gmail.com",
 };
 
@@ -34,76 +32,45 @@ const sendEmail = async (templateId, params) => {
   } catch { return false; }
 };
 
-/* ─── STORAGE HELPERS ─── */
-const STORAGE_KEY = "tmb-reviews";
-
-const seedReviews = [
-  { id: "seed-1", name: "Sarah M.", email: "", rating: 5, item: "Chocolate Chip Cookies", text: "The best cookies I've ever had — and I don't say that lightly! My kids ask for them every week.", role: "Local Mom", status: "approved", submittedAt: "2026-01-15T10:00:00Z" },
-  { id: "seed-2", name: "James R.", email: "", rating: 5, item: "Custom Birthday Cake", text: "We ordered a custom birthday cake and it was absolutely stunning. Tasted even better than it looked!", role: "Birthday Dad", status: "approved", submittedAt: "2026-01-22T14:00:00Z" },
-  { id: "seed-3", name: "Linda K.", email: "", rating: 5, item: "Assorted Cupcakes", text: "So proud of this young baker! The cupcakes she made for our church fundraiser were a total hit.", role: "Community Member", status: "approved", submittedAt: "2026-02-03T09:00:00Z" },
-  { id: "seed-4", name: "Michelle T.", email: "", rating: 5, item: "Sugar Cookies", text: "Ordered 3 dozen sugar cookies for my daughter's baby shower. They were almost too pretty to eat! Will definitely order again.", role: "Party Planner", status: "approved", submittedAt: "2026-02-10T11:00:00Z" },
-  { id: "seed-5", name: "David & Amy P.", email: "", rating: 5, item: "Snickerdoodle Cookies", text: "We've tried every bakery in the area and nothing comes close. The snickerdoodles are out of this world.", role: "Cookie Lovers", status: "approved", submittedAt: "2026-02-18T16:00:00Z" },
-  { id: "seed-6", name: "Rachel H.", email: "", rating: 5, item: "Custom Unicorn Cake", text: "She made the most amazing unicorn cake for my 6-year-old. My daughter said it was the best birthday ever!", role: "Happy Mom", status: "approved", submittedAt: "2026-02-25T13:00:00Z" },
-  { id: "seed-7", name: "Tom B.", email: "", rating: 5, item: "Vanilla Bean Cupcakes", text: "I ordered cupcakes for a work event and everyone was blown away. Professional quality from a high schooler — incredible!", role: "Office Manager", status: "approved", submittedAt: "2026-03-01T10:00:00Z" },
-  { id: "seed-8", name: "Karen W.", email: "", rating: 5, item: "Assorted Cookies", text: "Fresh, delicious, and made with so much care. You can really taste the difference when things are homemade.", role: "Neighbor", status: "approved", submittedAt: "2026-03-08T15:00:00Z" },
-  { id: "seed-9", name: "Brenda L.", email: "", rating: 5, item: "Red Velvet Cupcakes", text: "The red velvet cupcakes were the star of our family reunion. Everyone wanted the recipe — sorry, it's a secret!", role: "Family Reunion Host", status: "approved", submittedAt: "2026-03-15T12:00:00Z" },
-  { id: "seed-10", name: "Steve & Julie F.", email: "", rating: 5, item: "Butter Croissants", text: "These croissants are unbelievable — flaky, buttery, and better than any bakery in the city. We drive 20 minutes just to get them!", role: "Weekend Regulars", status: "approved", submittedAt: "2026-03-22T09:00:00Z" },
-];
-
-const loadReviews = async () => {
-  try {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    return stored ? JSON.parse(stored) : null;
-  } catch { return null; }
-};
-
-const saveReviews = async (reviews) => {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(reviews));
-    return true;
-  } catch { return false; }
-};
+/* ─── SUPABASE ─── */
+const supabase = createClient(
+  "https://soznqphntscfjfbxadsm.supabase.co",
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNvem5xcGhudHNjZmpmYnhhZHNtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc4NTU1MzEsImV4cCI6MjA5MzQzMTUzMX0.m9h3S8S0id04qBod8IeXdojKS-zoG8WKbsJdFl4QqNY"
+);
 
 /* ─── useReviews hook ─── */
 const useReviews = () => {
   const [reviews, setReviews] = useState([]);
   const [loaded, setLoaded] = useState(false);
 
-  useEffect(() => {
-    (async () => {
-      const stored = await loadReviews();
-      if (stored && stored.length > 0) {
-        setReviews(stored);
-      } else {
-        setReviews(seedReviews);
-        await saveReviews(seedReviews);
-      }
-      setLoaded(true);
-    })();
+  const fetchReviews = useCallback(async () => {
+    const { data, error } = await supabase
+      .from("reviews")
+      .select("*")
+      .order("created_at", { ascending: false });
+    if (!error && data) setReviews(data);
+    setLoaded(true);
   }, []);
 
-  const updateReviews = useCallback(async (newReviews) => {
-    setReviews(newReviews);
-    await saveReviews(newReviews);
-  }, []);
+  useEffect(() => { fetchReviews(); }, [fetchReviews]);
 
   const addReview = useCallback(async (review) => {
-    const newReviews = [...reviews, review];
-    await updateReviews(newReviews);
-    return newReviews;
-  }, [reviews, updateReviews]);
+    const { reviewer_name, reviewer_email, rating, item, review_text, status } = review;
+    const { error } = await supabase.from("reviews").insert([
+      { reviewer_name, reviewer_email, rating, item, review_text, status: status || "pending" }
+    ]);
+    if (!error) await fetchReviews();
+  }, [fetchReviews]);
 
   const updateReview = useCallback(async (id, updates) => {
-    const newReviews = reviews.map((r) => (r.id === id ? { ...r, ...updates } : r));
-    await updateReviews(newReviews);
-    return newReviews;
-  }, [reviews, updateReviews]);
+    const { error } = await supabase.from("reviews").update(updates).eq("id", id);
+    if (!error) await fetchReviews();
+  }, [fetchReviews]);
 
   const deleteReview = useCallback(async (id) => {
-    const newReviews = reviews.filter((r) => r.id !== id);
-    await updateReviews(newReviews);
-    return newReviews;
-  }, [reviews, updateReviews]);
+    const { error } = await supabase.from("reviews").delete().eq("id", id);
+    if (!error) await fetchReviews();
+  }, [fetchReviews]);
 
   const approved = reviews.filter((r) => r.status === "approved");
   const pending = reviews.filter((r) => r.status === "pending");
@@ -385,30 +352,19 @@ const ReviewsPage = ({ setPage, reviewsHook }) => {
   const { approved, addReview, avgRating, happyCount, fiveStarPct, totalApproved, loaded } = reviewsHook;
   const [showCount, setShowCount] = useState(6);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ name: "", email: "", rating: 0, item: "", text: "" });
+  const [form, setForm] = useState({ firstName: "", lastName: "", email: "", rating: 0, item: "", text: "" });
   const [submitStatus, setSubmitStatus] = useState("idle");
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (form.rating === 0) return;
     setSubmitStatus("sending");
-    const review = { id: `r-${Date.now()}`, name: form.name, email: form.email, rating: form.rating, item: form.item, text: form.text, role: "Customer", status: form.rating < 4 ? "pending" : "pending", submittedAt: new Date().toISOString() };
+    const displayName = form.lastName ? `${form.firstName} ${form.lastName.charAt(0)}.` : form.firstName;
+    const review = { reviewer_name: displayName, reviewer_email: form.email, rating: form.rating, item: form.item, review_text: form.text, status: "pending" };
     await addReview(review);
 
-    // Send low-review alert to owner
-    if (form.rating < 4) {
-      await sendEmail(CONFIG.EMAILJS_REVIEW_ALERT_ID, {
-        reviewer_name: form.name, reviewer_email: form.email, rating: form.rating, item: form.item, review_text: form.text, to_email: CONFIG.OWNER_EMAIL,
-      });
-    }
-
-    // Send branded thank-you to reviewer
-    await sendEmail(CONFIG.EMAILJS_REVIEW_THANKS_ID, {
-      to_name: form.name, to_email: form.email, rating: form.rating, item: form.item,
-    });
-
     setSubmitStatus("success");
-    setForm({ name: "", email: "", rating: 0, item: "", text: "" });
+    setForm({ firstName: "", lastName: "", email: "", rating: 0, item: "", text: "" });
   };
 
   if (!loaded) return <div style={{ paddingTop: "200px", textAlign: "center", fontFamily: "Outfit, sans-serif", color: T.brownLight }}>Loading reviews...</div>;
@@ -445,13 +401,11 @@ const ReviewsPage = ({ setPage, reviewsHook }) => {
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "24px" }}>
             {approved.slice(0, showCount).map((r) => (
               <div key={r.id} style={{ background: T.white, borderRadius: "16px", padding: "28px", border: `1px solid ${T.border}`, display: "flex", flexDirection: "column", transition: "transform 0.25s, box-shadow 0.25s" }} onMouseEnter={(e) => { e.currentTarget.style.transform = "translateY(-3px)"; e.currentTarget.style.boxShadow = "0 8px 30px rgba(61,50,41,0.06)"; }} onMouseLeave={(e) => { e.currentTarget.style.transform = ""; e.currentTarget.style.boxShadow = ""; }}>
-                <div style={{ marginBottom: "14px", opacity: 0.2 }}>{Icons.quote}</div>
                 <StarDisplay rating={r.rating} />
-                <p style={{ fontFamily: "Outfit, sans-serif", fontSize: "15px", color: T.brownSoft, lineHeight: 1.7, flex: 1, marginBottom: "18px", marginTop: "14px" }}>"{r.text}"</p>
+                <p style={{ fontFamily: "Outfit, sans-serif", fontSize: "15px", color: T.brownSoft, lineHeight: 1.7, flex: 1, marginBottom: "18px", marginTop: "14px" }}>{r.review_text}</p>
                 <div style={{ borderTop: `1px solid ${T.border}`, paddingTop: "14px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px" }}>
                   <div>
-                    <div style={{ fontFamily: "'Fraunces', serif", fontSize: "15px", fontWeight: 500, color: T.brown }}>{r.name}</div>
-                    <div style={{ fontFamily: "Outfit, sans-serif", fontSize: "12px", color: T.brownLight }}>{r.role}</div>
+                    <div style={{ fontFamily: "'Fraunces', serif", fontSize: "15px", fontWeight: 500, color: T.brown }}>{r.reviewer_name}</div>
                   </div>
                   {r.item && <span style={{ fontFamily: "Outfit, sans-serif", fontSize: "11px", padding: "4px 10px", background: T.blueSoft, borderRadius: "8px", color: T.blueDeep }}>{r.item}</span>}
                 </div>
@@ -463,11 +417,14 @@ const ReviewsPage = ({ setPage, reviewsHook }) => {
           {/* Submit a Review */}
           <div style={{ marginTop: "64px", background: T.white, borderRadius: "16px", padding: "40px", border: `1px solid ${T.border}` }}>
             {submitStatus === "success" ? (
-              <div style={{ textAlign: "center", padding: "24px 0" }}>
-                <div style={{ marginBottom: "16px" }}>{Icons.check}</div>
-                <h3 style={{ fontFamily: "'Fraunces', serif", fontSize: "24px", fontWeight: 500, color: T.brown, marginBottom: "12px" }}>Thank You for Your Review!</h3>
-                <p style={{ fontFamily: "Outfit, sans-serif", fontSize: "15px", color: T.brownSoft, marginBottom: "20px" }}>Your review has been submitted and will appear once it's been reviewed. We appreciate your feedback!</p>
-                <Btn variant="outline" onClick={() => setSubmitStatus("idle")}>Write Another</Btn>
+              <div style={{ textAlign: "center", padding: "32px 16px" }}>
+                <div style={{ marginBottom: "16px" }}><svg width="48" height="48" viewBox="0 0 24 24" fill={T.blue} xmlns="http://www.w3.org/2000/svg"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg></div>
+                <h3 style={{ fontFamily: "Outfit, sans-serif", fontSize: "26px", fontWeight: 600, color: T.brown, marginBottom: "16px" }}>You Just Made Our Day!</h3>
+                <p style={{ fontFamily: "Outfit, sans-serif", fontSize: "16px", color: T.brownSoft, lineHeight: 1.8, maxWidth: "460px", margin: "0 auto 12px" }}>As a small bakery run by a high school junior right here in Vernal, every single review means the world to us. Your kind words keep us inspired to wake up early, mix the batter, and bake with love.</p>
+                <p style={{ fontFamily: "Outfit, sans-serif", fontSize: "15px", color: T.brownLight, lineHeight: 1.7, maxWidth: "460px", margin: "0 auto 24px", fontStyle: "italic" }}>Your review will appear on our page after a quick look. Thank you for supporting a local dream!</p>
+                <div style={{ display: "flex", gap: "12px", justifyContent: "center", flexWrap: "wrap" }}>
+                  <Btn variant="outline" onClick={() => setSubmitStatus("idle")}>Write Another Review</Btn>
+                </div>
               </div>
             ) : !showForm ? (
               <div style={{ textAlign: "center" }}>
@@ -484,16 +441,17 @@ const ReviewsPage = ({ setPage, reviewsHook }) => {
                   {form.rating > 0 && <span style={{ fontFamily: "Outfit, sans-serif", fontSize: "13px", color: T.brownLight, marginLeft: "12px" }}>{form.rating === 5 ? "Amazing!" : form.rating === 4 ? "Great!" : form.rating === 3 ? "Good" : form.rating === 2 ? "Fair" : "Poor"}</span>}
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", marginBottom: "16px" }}>
-                  <div><label style={labelStyle}>Your Name *</label><input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required style={inputStyle} placeholder="Jane Smith" onFocus={(e) => (e.target.style.borderColor = T.blue)} onBlur={(e) => (e.target.style.borderColor = T.border)} /></div>
-                  <div><label style={labelStyle}>Email Address *</label><input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required style={inputStyle} placeholder="jane@email.com" onFocus={(e) => (e.target.style.borderColor = T.blue)} onBlur={(e) => (e.target.style.borderColor = T.border)} /></div>
+                  <div><label style={labelStyle}>First Name *</label><input value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} required style={inputStyle} placeholder="Jane" onFocus={(e) => (e.target.style.borderColor = T.blue)} onBlur={(e) => (e.target.style.borderColor = T.border)} /></div>
+                  <div><label style={labelStyle}>Last Name *</label><input value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} required style={inputStyle} placeholder="Smith" onFocus={(e) => (e.target.style.borderColor = T.blue)} onBlur={(e) => (e.target.style.borderColor = T.border)} /></div>
                 </div>
+                <div style={{ marginBottom: "16px" }}><label style={labelStyle}>Email Address *</label><input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required style={inputStyle} placeholder="jane@email.com" onFocus={(e) => (e.target.style.borderColor = T.blue)} onBlur={(e) => (e.target.style.borderColor = T.border)} /></div>
                 <div style={{ marginBottom: "16px" }}><label style={labelStyle}>What Did You Order?</label><input value={form.item} onChange={(e) => setForm({ ...form, item: e.target.value })} style={inputStyle} placeholder="e.g. Chocolate Chip Cookies, Croissants, Custom Cake" onFocus={(e) => (e.target.style.borderColor = T.blue)} onBlur={(e) => (e.target.style.borderColor = T.border)} /></div>
                 <div style={{ marginBottom: "24px" }}><label style={labelStyle}>Your Review *</label><textarea value={form.text} onChange={(e) => setForm({ ...form, text: e.target.value })} required rows={4} style={{ ...inputStyle, resize: "vertical" }} placeholder="Tell us about your experience..." onFocus={(e) => (e.target.style.borderColor = T.blue)} onBlur={(e) => (e.target.style.borderColor = T.border)} /></div>
                 <div style={{ display: "flex", gap: "12px" }}>
                   <Btn type="submit" disabled={form.rating === 0 || submitStatus === "sending"}>{submitStatus === "sending" ? "Submitting..." : "Submit Review"}</Btn>
                   <Btn variant="outline" onClick={() => setShowForm(false)}>Cancel</Btn>
                 </div>
-                <p style={{ fontFamily: "Outfit, sans-serif", fontSize: "13px", color: T.brownLight, marginTop: "12px" }}>Your review will be published after a quick review. Your email won't be displayed publicly.</p>
+                <p style={{ fontFamily: "Outfit, sans-serif", fontSize: "13px", color: T.brownLight, marginTop: "12px" }}>Your review will be published after a quick look. Only your first name and last initial will be shown publicly.</p>
               </form>
             )}
           </div>
@@ -597,22 +555,22 @@ const AdminPage = ({ reviewsHook, setPage }) => {
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "12px", marginBottom: "12px" }}>
                     <div>
                       <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "4px" }}>
-                        <span style={{ fontFamily: "'Fraunces', serif", fontSize: "17px", fontWeight: 500, color: T.brown }}>{r.name}</span>
+                        <span style={{ fontFamily: "'Fraunces', serif", fontSize: "17px", fontWeight: 500, color: T.brown }}>{r.reviewer_name}</span>
                         <span style={{ fontSize: "12px", padding: "3px 10px", borderRadius: "6px", background: statusColor(r.status) + "20", color: statusColor(r.status), fontFamily: "Outfit, sans-serif", fontWeight: 500 }}>{statusLabel(r.status)}</span>
                         {r.rating < 4 && <span style={{ display: "flex", alignItems: "center", gap: "4px", fontSize: "12px", color: T.red, fontFamily: "Outfit, sans-serif" }}>{Icons.alert} Low rating</span>}
                       </div>
-                      <div style={{ fontFamily: "Outfit, sans-serif", fontSize: "12px", color: T.brownLight }}>{r.email || "No email"} · {r.item || "No item"} · {new Date(r.submittedAt).toLocaleDateString()}</div>
+                      <div style={{ fontFamily: "Outfit, sans-serif", fontSize: "12px", color: T.brownLight }}>{r.reviewer_email || "No email"} · {r.item || "No item"} · {new Date(r.created_at).toLocaleDateString()}</div>
                     </div>
                     <StarDisplay rating={r.rating} />
                   </div>
-                  <p style={{ fontFamily: "Outfit, sans-serif", fontSize: "14px", color: T.brownSoft, lineHeight: 1.7, marginBottom: "16px", padding: "12px 16px", background: T.cream, borderRadius: "8px" }}>"{r.text}"</p>
+                  <p style={{ fontFamily: "Outfit, sans-serif", fontSize: "14px", color: T.brownSoft, lineHeight: 1.7, marginBottom: "16px", padding: "12px 16px", background: T.cream, borderRadius: "8px" }}>{r.review_text}</p>
 
                   {/* Action buttons */}
                   <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
                     {r.status !== "approved" && <Btn style={{ padding: "8px 18px", fontSize: "13px" }} onClick={() => updateReview(r.id, { status: "approved" })}>✓ Approve</Btn>}
                     {r.status !== "rejected" && <Btn variant="danger" style={{ padding: "8px 18px", fontSize: "13px" }} onClick={() => updateReview(r.id, { status: "rejected" })}>✕ Reject</Btn>}
-                    {r.email && <Btn variant="outline" style={{ padding: "8px 18px", fontSize: "13px" }} onClick={() => { setReplyTo(r); setReplyMsg(""); }}>✉ Reply</Btn>}
-                    {r.email && r.status !== "approved" && <Btn variant="wood" style={{ padding: "8px 18px", fontSize: "13px" }} onClick={() => { setPushbackTo(r); setPushbackMsg(`Hi ${r.name},\n\nThank you for your feedback. We took your comments to heart and would love the chance to make it right. We'd be so grateful if you'd consider updating your review based on your experience.\n\nThank you!\nTaylor Mountain Bakery`); }}>↩ Push Back for Update</Btn>}
+                    {r.reviewer_email && <Btn variant="outline" style={{ padding: "8px 18px", fontSize: "13px" }} onClick={() => { setReplyTo(r); setReplyMsg(""); }}>✉ Reply</Btn>}
+                    {r.reviewer_email && r.status !== "approved" && <Btn variant="wood" style={{ padding: "8px 18px", fontSize: "13px" }} onClick={() => { setPushbackTo(r); setPushbackMsg(`Hi ${r.reviewer_name},\n\nThank you for your feedback. We took your comments to heart and would love the chance to make it right. We'd be so grateful if you'd consider updating your review based on your experience.\n\nThank you!\nTaylor Mountain Bakery`); }}>↩ Push Back for Update</Btn>}
                     <Btn variant="outline" style={{ padding: "8px 18px", fontSize: "13px", color: T.red, borderColor: T.red + "44" }} onClick={() => { if (confirm("Permanently delete this review?")) deleteReview(r.id); }}>Delete</Btn>
                   </div>
                 </div>
@@ -624,11 +582,11 @@ const AdminPage = ({ reviewsHook, setPage }) => {
           {replyTo && (
             <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(61,50,41,0.5)", backdropFilter: "blur(4px)", zIndex: 2000, display: "flex", alignItems: "center", justifyContent: "center", padding: "24px" }} onClick={() => setReplyTo(null)}>
               <div onClick={(e) => e.stopPropagation()} style={{ background: T.white, borderRadius: "16px", maxWidth: "500px", width: "100%", padding: "32px", boxShadow: "0 20px 60px rgba(61,50,41,0.2)" }}>
-                <h3 style={{ fontFamily: "'Fraunces', serif", fontSize: "20px", fontWeight: 500, color: T.brown, marginBottom: "8px" }}>Reply to {replyTo.name}</h3>
-                <p style={{ fontFamily: "Outfit, sans-serif", fontSize: "13px", color: T.brownLight, marginBottom: "20px" }}>This will open your email client to send a reply to {replyTo.email}</p>
+                <h3 style={{ fontFamily: "'Fraunces', serif", fontSize: "20px", fontWeight: 500, color: T.brown, marginBottom: "8px" }}>Reply to {replyTo.reviewer_name}</h3>
+                <p style={{ fontFamily: "Outfit, sans-serif", fontSize: "13px", color: T.brownLight, marginBottom: "20px" }}>This will open your email client to send a reply to {replyTo.reviewer_email}</p>
                 <textarea value={replyMsg} onChange={(e) => setReplyMsg(e.target.value)} rows={5} style={{ ...inputStyle, resize: "vertical", marginBottom: "16px" }} placeholder="Write your reply..." />
                 <div style={{ display: "flex", gap: "12px" }}>
-                  <a href={`mailto:${replyTo.email}?subject=Thank you for your review! — Taylor Mountain Bakery&body=${encodeURIComponent(replyMsg)}`} style={{ textDecoration: "none" }}><Btn>Open in Email</Btn></a>
+                  <a href={`mailto:${replyTo.reviewer_email}?subject=Thank you for your review! — Taylor Mountain Bakery&body=${encodeURIComponent(replyMsg)}`} style={{ textDecoration: "none" }}><Btn>Open in Email</Btn></a>
                   <Btn variant="outline" onClick={() => setReplyTo(null)}>Cancel</Btn>
                 </div>
               </div>
@@ -639,16 +597,19 @@ const AdminPage = ({ reviewsHook, setPage }) => {
           {pushbackTo && (
             <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(61,50,41,0.5)", backdropFilter: "blur(4px)", zIndex: 2000, display: "flex", alignItems: "center", justifyContent: "center", padding: "24px" }} onClick={() => setPushbackTo(null)}>
               <div onClick={(e) => e.stopPropagation()} style={{ background: T.white, borderRadius: "16px", maxWidth: "540px", width: "100%", padding: "32px", boxShadow: "0 20px 60px rgba(61,50,41,0.2)" }}>
-                <h3 style={{ fontFamily: "'Fraunces', serif", fontSize: "20px", fontWeight: 500, color: T.brown, marginBottom: "8px" }}>Push Back to {pushbackTo.name}</h3>
-                <p style={{ fontFamily: "Outfit, sans-serif", fontSize: "13px", color: T.brownLight, marginBottom: "4px" }}>This will mark the review as "Pushed Back" and email the customer inviting them to submit an updated review.</p>
+                <h3 style={{ fontFamily: "'Fraunces', serif", fontSize: "20px", fontWeight: 500, color: T.brown, marginBottom: "8px" }}>Push Back to {pushbackTo.reviewer_name}</h3>
+                <p style={{ fontFamily: "Outfit, sans-serif", fontSize: "13px", color: T.brownLight, marginBottom: "4px" }}>This will mark the review as "Pushed Back." You can reach out to the customer manually using the email below.</p>
                 <p style={{ fontFamily: "Outfit, sans-serif", fontSize: "12px", color: T.blueDeep, marginBottom: "20px" }}>The original review will not be published. If they resubmit, it will appear as a new pending review.</p>
-                <textarea value={pushbackMsg} onChange={(e) => setPushbackMsg(e.target.value)} rows={7} style={{ ...inputStyle, resize: "vertical", marginBottom: "16px" }} />
+                <div style={{ background: T.cream, borderRadius: "10px", padding: "16px", marginBottom: "16px", border: `1px solid ${T.border}` }}>
+                  <p style={{ fontFamily: "Outfit, sans-serif", fontSize: "13px", color: T.brownLight, marginBottom: "6px" }}>Customer email:</p>
+                  <p style={{ fontFamily: "Outfit, sans-serif", fontSize: "15px", color: T.brown, fontWeight: 500, wordBreak: "break-all" }}>{pushbackTo.reviewer_email}</p>
+                  <Btn variant="outline" style={{ marginTop: "10px", fontSize: "13px" }} onClick={() => { navigator.clipboard.writeText(pushbackTo.reviewer_email); }}>Copy Email</Btn>
+                </div>
                 <div style={{ display: "flex", gap: "12px" }}>
                   <Btn onClick={async () => {
                     await updateReview(pushbackTo.id, { status: "pushed_back" });
-                    await sendEmail(CONFIG.EMAILJS_PUSHBACK_ID, { reviewer_name: pushbackTo.name, to_email: pushbackTo.email, message: pushbackMsg, review_link: "taylormountainbakery.com" });
                     setPushbackTo(null);
-                  }}>Send & Mark Pushed Back</Btn>
+                  }}>Mark as Pushed Back</Btn>
                   <Btn variant="outline" onClick={() => setPushbackTo(null)}>Cancel</Btn>
                 </div>
               </div>
