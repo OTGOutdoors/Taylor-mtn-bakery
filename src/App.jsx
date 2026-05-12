@@ -83,6 +83,66 @@ const useReviews = () => {
   return { reviews, approved, pending, pushed, loaded, addReview, updateReview, deleteReview, avgRating, happyCount, fiveStarPct, totalApproved: approved.length };
 };
 
+/* ─── useOrders hook ─── */
+const ORDER_STATUSES = ["new", "reviewed", "waiting_on_customer", "confirmed", "in_progress", "ready_for_pickup", "completed", "cancelled"];
+const ORDER_STATUS_LABELS = { new: "New", reviewed: "Reviewed", waiting_on_customer: "Waiting on Customer", confirmed: "Confirmed", in_progress: "In Progress", ready_for_pickup: "Ready for Pickup", completed: "Completed", cancelled: "Cancelled" };
+const ORDER_STATUS_COLORS = { new: "#E8C84A", reviewed: "#9DC5D8", waiting_on_customer: "#D4736C", confirmed: "#7EAE8B", in_progress: "#6EA8BE", ready_for_pickup: "#C8AD8A", completed: "#5A9E6F", cancelled: "#999" };
+const PAYMENT_LABELS = { unpaid: "Unpaid", deposit_paid: "Deposit Paid", paid_in_full: "Paid in Full" };
+const PAYMENT_COLORS = { unpaid: "#D4736C", deposit_paid: "#E8C84A", paid_in_full: "#7EAE8B" };
+
+const generateOrderNumber = async () => {
+  const yy = new Date().getFullYear().toString().slice(-2);
+  const prefix = `TMB-${yy}-`;
+  const { data } = await supabase.from("orders").select("order_number").like("order_number", `${prefix}%`).order("order_number", { ascending: false }).limit(1);
+  const lastNum = data && data.length > 0 && data[0].order_number ? parseInt(data[0].order_number.split("-").pop(), 10) : 0;
+  return `${prefix}${String(lastNum + 1).padStart(4, "0")}`;
+};
+
+const useOrders = () => {
+  const [orders, setOrders] = useState([]);
+  const [loaded, setLoaded] = useState(false);
+
+  const fetchOrders = useCallback(async () => {
+    const { data, error } = await supabase.from("orders").select("*").order("created_at", { ascending: false });
+    if (!error && data) setOrders(data);
+    setLoaded(true);
+  }, []);
+
+  useEffect(() => { fetchOrders(); }, [fetchOrders]);
+
+  const updateOrder = useCallback(async (id, updates) => {
+    const { error } = await supabase.from("orders").update({ ...updates, updated_at: new Date().toISOString() }).eq("id", id);
+    if (!error) await fetchOrders();
+  }, [fetchOrders]);
+
+  const deleteOrder = useCallback(async (id) => {
+    const { error } = await supabase.from("orders").delete().eq("id", id);
+    if (!error) await fetchOrders();
+  }, [fetchOrders]);
+
+  const countByStatus = (status) => orders.filter((o) => o.order_status === status).length;
+
+  const orderNeedsAttention = (o) => {
+    const now = new Date();
+    const updated = new Date(o.updated_at || o.created_at);
+    const daysSinceUpdate = (now - updated) / (1000 * 60 * 60 * 24);
+    const eventDate = o.event_date ? new Date(o.event_date) : null;
+    const daysUntilEvent = eventDate ? (eventDate - now) / (1000 * 60 * 60 * 24) : null;
+
+    if (o.order_status === "new" && daysSinceUpdate >= 2) return "New for " + Math.floor(daysSinceUpdate) + "d — needs review";
+    if (o.order_status === "reviewed" && daysSinceUpdate >= 2) return "Reviewed " + Math.floor(daysSinceUpdate) + "d ago — reach out to customer";
+    if (o.order_status === "waiting_on_customer" && daysSinceUpdate >= 3) return "Waiting " + Math.floor(daysSinceUpdate) + "d — follow up with customer";
+    if (o.order_status === "confirmed" && daysUntilEvent !== null && daysUntilEvent <= 7) return "Event in " + Math.max(0, Math.ceil(daysUntilEvent)) + "d — move to In Progress";
+    if (["new", "reviewed", "waiting_on_customer"].includes(o.order_status) && daysUntilEvent !== null && daysUntilEvent <= 3) return "Event in " + Math.max(0, Math.ceil(daysUntilEvent)) + "d — urgent!";
+    return null;
+  };
+
+  const attentionOrders = orders.filter((o) => orderNeedsAttention(o));
+  const attentionCount = attentionOrders.length;
+
+  return { orders, loaded, updateOrder, deleteOrder, fetchOrders, countByStatus, orderNeedsAttention, attentionCount };
+};
+
 /* ─── Google Fonts ─── */
 const FontLoader = () => {
   useEffect(() => {
@@ -174,7 +234,7 @@ const Nav = ({ page, setPage }) => {
   return (
     <>
       <nav style={{ position: "fixed", top: 0, left: 0, right: 0, zIndex: 1000, background: scrolled ? "rgba(251,248,243,0.95)" : "transparent", backdropFilter: scrolled ? "blur(12px)" : "none", borderBottom: scrolled ? `1px solid ${T.border}` : "1px solid transparent", transition: "all 0.4s ease", padding: scrolled ? "12px 0" : "20px 0" }}>
-        <div style={{ maxWidth: "1400px", margin: "0 auto", padding: "0 24px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div style={{ width: "100%", margin: "0 auto", padding: "0 24px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div onClick={() => { setPage("Home"); window.scrollTo(0, 0); }} style={{ cursor: "pointer", display: "flex", alignItems: "center", gap: "10px" }}>
             {Icons.wheat}
             <span style={{ fontFamily: "'Fraunces', serif", fontSize: "22px", fontWeight: 600, color: T.brown }}>Taylor Mountain Bakery</span>
@@ -201,9 +261,9 @@ const Nav = ({ page, setPage }) => {
 };
 
 /* ═══════════════════════  FOOTER  ═══════════════════════ */
-const Footer = ({ setPage, pendingCount }) => (
+const Footer = ({ setPage, pendingCount, newOrderCount, attentionCount }) => (
   <footer style={{ background: T.brown, color: T.woodLight, padding: "64px 24px 32px" }}>
-    <div style={{ maxWidth: "1400px", margin: "0 auto", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "40px" }}>
+    <div style={{ maxWidth: "1600px", margin: "0 auto", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "40px" }}>
       <div>
         <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "16px" }}>
           <svg width="28" height="28" viewBox="0 0 32 32" fill="none"><rect x="10" y="9" width="12" height="8" rx="1.5" fill={T.woodLight} stroke={T.wood} strokeWidth="1.3"/><path d="M11.5 9h9a1.5 1.5 0 011.5 1.5V13H10v-2.5A1.5 1.5 0 0111.5 9z" fill={T.blueSoft}/><rect x="7" y="16.5" width="18" height="9" rx="1.5" fill={T.woodLight} stroke={T.wood} strokeWidth="1.3"/><path d="M8.5 16.5h15a1.5 1.5 0 011.5 1.5V21H7v-3a1.5 1.5 0 011.5-1.5z" fill={T.blueSoft}/><path d="M10 12.5c1.5-.6 3.5-1 6-1s4.5.4 6 1" stroke={T.woodDark} strokeWidth="1" fill="none" strokeLinecap="round"/><path d="M7 20.5c2.5-.8 5.5-1.2 9-1.2s6.5.4 9 1.2" stroke={T.woodDark} strokeWidth="1" fill="none" strokeLinecap="round"/></svg>
@@ -217,23 +277,23 @@ const Footer = ({ setPage, pendingCount }) => (
           <div key={l} style={{ marginBottom: "8px" }}><button onClick={() => { setPage(l); window.scrollTo(0, 0); }} style={{ fontFamily: "Outfit, sans-serif", fontSize: "14px", color: T.brownLight, background: "none", border: "none", cursor: "pointer", padding: 0, transition: "color 0.2s" }} onMouseEnter={(e) => (e.target.style.color = T.blue)} onMouseLeave={(e) => (e.target.style.color = T.brownLight)}>{l}</button></div>
         ))}
       </div>
-      <div>
+      <div style={{ textAlign: "right" }}>
         <h4 style={{ fontFamily: "'Fraunces', serif", fontSize: "16px", color: T.cream, marginBottom: "16px" }}>Follow Along</h4>
-        <div style={{ display: "flex", gap: "16px" }}>
+        <div style={{ display: "flex", gap: "16px", justifyContent: "flex-end" }}>
           {[{ href: "https://www.facebook.com/profile.php?id=61562435145114", icon: <svg width="22" height="22" viewBox="0 0 24 24" fill={T.woodLight}><path d="M18 2h-3a5 5 0 00-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 011-1h3z" /></svg> }, { href: "https://www.instagram.com/taylormtnbakery/", icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={T.woodLight} strokeWidth="2" strokeLinecap="round"><rect x="2" y="2" width="20" height="20" rx="5" /><circle cx="12" cy="12" r="5" /><circle cx="17.5" cy="6.5" r="1.5" fill={T.woodLight} stroke="none" /></svg> }].map((s, i) => (
             <a key={i} href={s.href} target="_blank" rel="noopener noreferrer" style={{ width: "44px", height: "44px", borderRadius: "10px", background: "rgba(255,255,255,0.08)", display: "flex", alignItems: "center", justifyContent: "center", transition: "background 0.2s" }} onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.15)")} onMouseLeave={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.08)")}>{s.icon}</a>
           ))}
         </div>
         {/* Admin link */}
         <button onClick={() => { setPage("Admin"); window.scrollTo(0, 0); }}
-          style={{ fontFamily: "Outfit, sans-serif", fontSize: "12px", color: "rgba(255,255,255,0.2)", background: "none", border: "none", cursor: "pointer", padding: 0, marginTop: "24px", display: "flex", alignItems: "center", gap: "6px", transition: "color 0.2s" }}
+          style={{ fontFamily: "Outfit, sans-serif", fontSize: "12px", color: "rgba(255,255,255,0.2)", background: "none", border: "none", cursor: "pointer", padding: 0, marginTop: "24px", display: "flex", alignItems: "center", gap: "6px", transition: "color 0.2s", marginLeft: "auto" }}
           onMouseEnter={(e) => (e.target.style.color = "rgba(255,255,255,0.5)")} onMouseLeave={(e) => (e.target.style.color = "rgba(255,255,255,0.2)")}
         >
-          {Icons.shield} Owner Dashboard {pendingCount > 0 && <span style={{ background: T.red, color: T.white, fontSize: "11px", padding: "2px 7px", borderRadius: "10px" }}>{pendingCount}</span>}
+          {Icons.shield} Owner Dashboard {attentionCount > 0 && <span style={{ background: "#D4736C", color: T.white, fontSize: "11px", fontWeight: 600, padding: "2px 7px", borderRadius: "10px", marginLeft: "4px" }}>{attentionCount}</span>}{newOrderCount > 0 && <span style={{ background: T.blue, color: T.brown, fontSize: "11px", fontWeight: 600, padding: "2px 7px", borderRadius: "10px", marginLeft: "4px" }}>{newOrderCount}</span>}{pendingCount > 0 && <span style={{ background: T.cream, color: T.brown, fontSize: "11px", fontWeight: 600, padding: "2px 7px", borderRadius: "10px", marginLeft: "4px", border: `1px solid ${T.border}` }}>{pendingCount}</span>}
         </button>
       </div>
     </div>
-    <div style={{ maxWidth: "1400px", margin: "48px auto 0", paddingTop: "24px", borderTop: "1px solid rgba(255,255,255,0.08)", textAlign: "center", fontFamily: "Outfit, sans-serif", fontSize: "13px", color: T.brownLight }}>© 2026 Taylor Mountain Bakery · Made with love in our small town</div>
+    <div style={{ maxWidth: "1600px", margin: "48px auto 0", paddingTop: "24px", borderTop: "1px solid rgba(255,255,255,0.08)", textAlign: "center", fontFamily: "Outfit, sans-serif", fontSize: "13px", color: T.brownLight }}>© 2026 Taylor Mountain Bakery · Made with love, for those you love!</div>
   </footer>
 );
 
@@ -246,7 +306,7 @@ const HomePage = ({ setPage }) => (
       <div style={{ textAlign: "center", maxWidth: "720px", position: "relative", zIndex: 1 }}>
         <Badge>Small Town · Big Flavor</Badge>
         <h1 style={{ fontFamily: "'Fraunces', serif", fontSize: "clamp(40px, 8vw, 72px)", fontWeight: 500, color: T.brown, margin: "24px 0", lineHeight: 1.1 }}>Baked Fresh, <span style={{ color: T.blueDeep, fontStyle: "italic" }}>With Love</span></h1>
-        <p style={{ fontFamily: "Outfit, sans-serif", fontSize: "18px", color: T.brownSoft, lineHeight: 1.7, maxWidth: "520px", margin: "0 auto 40px" }}>Handcrafted cookies, cupcakes, custom cakes, pastries &amp; more — all made from scratch in our small-town kitchen. Every order is baked with care for our community.</p>
+        <p style={{ fontFamily: "Outfit, sans-serif", fontSize: "18px", color: T.brownSoft, lineHeight: 1.7, maxWidth: "520px", margin: "0 auto 40px" }}>Handcrafted cookies, cupcakes, custom cakes, pastries &amp; more — all made from scratch in our small-town kitchen. Every order is baked with love, for those you love.</p>
         <div style={{ display: "flex", gap: "16px", justifyContent: "center", flexWrap: "wrap" }}>
           <Btn onClick={() => { setPage("Order"); window.scrollTo(0, 0); }}>Place a Custom Order</Btn>
           <Btn variant="outline" onClick={() => { setPage("About"); window.scrollTo(0, 0); }}>Our Story</Btn>
@@ -254,7 +314,7 @@ const HomePage = ({ setPage }) => (
       </div>
     </section>
     <section style={{ padding: "96px 24px", background: T.white }}>
-      <div style={{ maxWidth: "1400px", margin: "0 auto" }}>
+      <div style={{ width: "100%", margin: "0 auto" }}>
         <SectionTitle badge="Our Specialties" title="What We Bake" subtitle="From classic chocolate chip cookies to buttery croissants, every treat is made from scratch with quality ingredients." />
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))", gap: "24px" }}>
           {[{ icon: Icons.cookie, title: "Cookies", desc: "Classic favorites and creative flavors, baked golden and chewy. Perfect by the dozen for any occasion.", items: ["Chocolate Chip", "Sugar Cookies", "Snickerdoodle", "Seasonal Specials"] }, { icon: Icons.cupcake, title: "Cupcakes", desc: "Fluffy, flavorful and beautifully topped. Available in a variety of flavors with custom decorating options.", items: ["Vanilla Bean", "Rich Chocolate", "Red Velvet", "Lemon Blueberry"] }, { icon: Icons.cake, title: "Custom Cakes", desc: "Designed just for you. Birthday cakes, celebration cakes, and everything in between — made to order.", items: ["Birthday Cakes", "Celebration Cakes", "Themed Designs", "All Sizes"] }, { icon: Icons.pastry, title: "Pastries & More", desc: "From flaky croissants to sweet confections, we're always exploring new creations fresh from the oven.", items: ["Croissants", "Cinnamon Rolls", "Danishes", "Sweet Confections"] }].map((item) => (
@@ -266,7 +326,7 @@ const HomePage = ({ setPage }) => (
             </div>
           ))}
         </div>
-        <div onClick={() => { setPage("Gallery"); window.scrollTo(0, 0); }} style={{ marginTop: "56px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: "24px", padding: "28px 32px", borderRadius: "16px", background: `linear-gradient(135deg, ${T.cream} 0%, ${T.blueSoft}44 50%, ${T.woodLight}66 100%)`, border: `1px dashed ${T.border}`, transition: "all 0.35s" }} onMouseEnter={(e) => { e.currentTarget.style.borderColor = T.blue; e.currentTarget.style.transform = "translateY(-2px)"; }} onMouseLeave={(e) => { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.transform = ""; }}>
+        <div onClick={() => { setPage("Gallery"); window.scrollTo(0, 0); }} style={{ marginTop: "56px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: "24px", padding: "28px 32px", borderRadius: "16px", background: `linear-gradient(135deg, ${T.cream} 0%, ${T.blueSoft}44 50%, ${T.woodLight}66 100%)`, border: `1px dashed ${T.border}`, transition: "all 0.35s", maxWidth: "600px", margin: "56px auto 0" }} onMouseEnter={(e) => { e.currentTarget.style.borderColor = T.blue; e.currentTarget.style.transform = "translateY(-2px)"; }} onMouseLeave={(e) => { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.transform = ""; }}>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "6px", flexShrink: 0 }}>{[T.woodLight, T.blueSoft, T.woodLight, T.blueSoft, T.woodLight, T.blueSoft].map((c, i) => <div key={i} style={{ width: "36px", height: "36px", borderRadius: "6px", background: c, display: "flex", alignItems: "center", justifyContent: "center", opacity: 0.7 + i * 0.05 }}>{i === 4 && Icons.camera}</div>)}</div>
           <div>
             <div style={{ fontFamily: "'Fraunces', serif", fontSize: "18px", fontWeight: 500, color: T.brown, marginBottom: "4px", display: "flex", alignItems: "center", gap: "8px" }}>Peek inside our kitchen {Icons.arrowRight}</div>
@@ -317,7 +377,7 @@ const GalleryPage = ({ setPage }) => {
         </div>
       </section>
       <section style={{ padding: "0 24px 96px", background: T.cream }}>
-        <div style={{ maxWidth: "1400px", margin: "0 auto" }}>
+        <div style={{ width: "100%", margin: "0 auto" }}>
           <div style={{ columns: "4 280px", columnGap: "20px" }}>
             {filtered.map((item, idx) => (
               <div key={item.id} onClick={() => setSel(item)} style={{ breakInside: "avoid", marginBottom: "20px", borderRadius: "14px", overflow: "hidden", cursor: "pointer", transition: "transform 0.3s, box-shadow 0.3s", border: `1px solid ${T.border}`, background: T.white }} onMouseEnter={(e) => { e.currentTarget.style.transform = "translateY(-4px)"; e.currentTarget.style.boxShadow = "0 12px 40px rgba(61,50,41,0.1)"; }} onMouseLeave={(e) => { e.currentTarget.style.transform = ""; e.currentTarget.style.boxShadow = ""; }}>
@@ -377,9 +437,9 @@ const ReviewsPage = ({ setPage, reviewsHook }) => {
         <p style={{ fontFamily: "Outfit, sans-serif", fontSize: "16px", color: T.brownSoft, maxWidth: "500px", margin: "0 auto 40px", lineHeight: 1.7 }}>Don't just take our word for it — hear from the folks in our community.</p>
       </section>
       <section style={{ padding: "48px 24px 96px", background: T.cream }}>
-        <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
+        <div style={{ width: "100%", margin: "0 auto" }}>
           {/* Auto-calculated stats */}
-          <div style={{ background: T.white, borderRadius: "16px", padding: "32px 40px", border: `1px solid ${T.border}`, marginBottom: "48px", display: "flex", alignItems: "center", justifyContent: "center", gap: "48px", flexWrap: "wrap" }}>
+          <div style={{ background: T.white, borderRadius: "16px", padding: "32px 40px", border: `1px solid ${T.border}`, marginBottom: "48px", display: "flex", alignItems: "center", justifyContent: "center", gap: "48px", flexWrap: "wrap", maxWidth: "700px", margin: "0 auto 48px" }}>
             <div style={{ textAlign: "center" }}>
               <div style={{ fontFamily: "'Fraunces', serif", fontSize: "36px", fontWeight: 600, color: T.brown }}>{avgRating}</div>
               <StarDisplay rating={Math.round(parseFloat(avgRating))} />
@@ -398,7 +458,7 @@ const ReviewsPage = ({ setPage, reviewsHook }) => {
           </div>
 
           {/* Approved review cards */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "24px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 400px))", gap: "24px", justifyContent: "center" }}>
             {approved.slice(0, showCount).map((r) => (
               <div key={r.id} style={{ background: T.white, borderRadius: "16px", padding: "28px", border: `1px solid ${T.border}`, display: "flex", flexDirection: "column", transition: "transform 0.25s, box-shadow 0.25s" }} onMouseEnter={(e) => { e.currentTarget.style.transform = "translateY(-3px)"; e.currentTarget.style.boxShadow = "0 8px 30px rgba(61,50,41,0.06)"; }} onMouseLeave={(e) => { e.currentTarget.style.transform = ""; e.currentTarget.style.boxShadow = ""; }}>
                 <StarDisplay rating={r.rating} />
@@ -415,7 +475,7 @@ const ReviewsPage = ({ setPage, reviewsHook }) => {
           {showCount < approved.length && <div style={{ textAlign: "center", marginTop: "40px" }}><Btn variant="outline" onClick={() => setShowCount((c) => c + 6)}>Show More Reviews</Btn></div>}
 
           {/* Submit a Review */}
-          <div style={{ marginTop: "64px", background: T.white, borderRadius: "16px", padding: "40px", border: `1px solid ${T.border}` }}>
+          <div style={{ marginTop: "64px", background: T.white, borderRadius: "16px", padding: "40px", border: `1px solid ${T.border}`, maxWidth: "700px", margin: "64px auto 0" }}>
             {submitStatus === "success" ? (
               <div style={{ textAlign: "center", padding: "32px 16px" }}>
                 <div style={{ marginBottom: "16px" }}><svg width="48" height="48" viewBox="0 0 24 24" fill={T.blue} xmlns="http://www.w3.org/2000/svg"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg></div>
@@ -463,11 +523,372 @@ const ReviewsPage = ({ setPage, reviewsHook }) => {
 };
 
 /* ═══════════════════════  ADMIN PANEL  ═══════════════════════ */
-const AdminPage = ({ reviewsHook, setPage }) => {
+/* ─── Orders Admin Section ─── */
+const OrdersAdmin = ({ ordersHook }) => {
+  const { orders, updateOrder, deleteOrder, countByStatus, orderNeedsAttention, attentionCount } = ordersHook;
+  const [view, setView] = useState("table");
+  const [selectedOrder, setSelectedOrder] = useState(null);
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [editPrice, setEditPrice] = useState("");
+  const [editNotes, setEditNotes] = useState("");
+  const [editPayment, setEditPayment] = useState("");
+  const [draggedId, setDraggedId] = useState(null);
+  const [visibleColumns, setVisibleColumns] = useState(() => ORDER_STATUSES.filter((s) => s !== "cancelled"));
+  const [emailConfirm, setEmailConfirm] = useState(null);
+  const [saveConfirm, setSaveConfirm] = useState(false);
+  const [confirmStatus, setConfirmStatus] = useState("");
+  const [showAdminForm, setShowAdminForm] = useState(false);
+  const [adminForm, setAdminForm] = useState({ name: "", email: "", phone: "", itemType: "", quantity: "", flavor: "", date: "", details: "", price: "", payment: "unpaid", notes: "", status: "new" });
+
+  const toggleColumn = (status) => setVisibleColumns((prev) => prev.includes(status) ? prev.filter((s) => s !== status) : [...prev, status]);
+  const activeStatuses = ORDER_STATUSES.filter((s) => s !== "cancelled");
+  const filtered = statusFilter === "all" ? orders : statusFilter === "attention" ? orders.filter((o) => orderNeedsAttention(o)) : statusFilter === "active" ? orders.filter((o) => o.order_status !== "completed" && o.order_status !== "cancelled") : orders.filter((o) => o.order_status === statusFilter);
+
+  const openDetail = (order) => {
+    setSelectedOrder(order);
+    setEditPrice(order.price != null ? String(order.price) : "");
+    setEditNotes(order.notes || "");
+    setEditPayment(order.payment_status);
+  };
+
+  const saveDetail = () => {
+    if (!selectedOrder) return;
+    setConfirmStatus(selectedOrder.order_status);
+    setSaveConfirm(true);
+  };
+
+  const confirmSave = async () => {
+    if (!selectedOrder) return;
+    await updateOrder(selectedOrder.id, { price: editPrice ? parseFloat(editPrice) : null, notes: editNotes || null, payment_status: editPayment, order_status: confirmStatus });
+    setSaveConfirm(false);
+    setSelectedOrder(null);
+  };
+
+  const submitAdminOrder = async () => {
+    const orderNumber = await generateOrderNumber();
+    const { error } = await supabase.from("orders").insert([{
+      order_number: orderNumber,
+      customer_name: adminForm.name,
+      customer_email: adminForm.email,
+      customer_phone: adminForm.phone || null,
+      items: [{ type: adminForm.itemType, quantity: adminForm.quantity, flavor: adminForm.flavor }],
+      quantity: adminForm.quantity || null,
+      flavor: adminForm.flavor || null,
+      event_date: adminForm.date || null,
+      special_instructions: adminForm.details || null,
+      order_status: adminForm.status,
+      payment_status: adminForm.payment,
+      price: adminForm.price ? parseFloat(adminForm.price) : null,
+      notes: adminForm.notes || null
+    }]);
+    if (!error) {
+      await ordersHook.fetchOrders();
+      setShowAdminForm(false);
+      setAdminForm({ name: "", email: "", phone: "", itemType: "", quantity: "", flavor: "", date: "", details: "", price: "", payment: "unpaid", notes: "", status: "new" });
+    }
+  };
+
+  const formatDate = (d) => d ? new Date(d).toLocaleDateString() : "—";
+  const formatItems = (o) => {
+    if (o.items && Array.isArray(o.items) && o.items.length > 0) return o.items.map((i) => `${i.type}${i.quantity ? ` (${i.quantity})` : ""}`).join(", ");
+    if (typeof o.items === "string") { try { const parsed = JSON.parse(o.items); if (Array.isArray(parsed)) return parsed.map((i) => `${i.type}${i.quantity ? ` (${i.quantity})` : ""}`).join(", "); } catch {} }
+    return o.quantity ? `${o.flavor || ""} ${o.quantity}` : "—";
+  };
+
+  return (
+    <>
+      {/* Add order button */}
+      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "16px" }}>
+        <Btn onClick={() => setShowAdminForm(true)}>+ New Order</Btn>
+      </div>
+
+      {/* Order stats */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))", gap: "12px", marginBottom: "28px" }}>
+        {[
+          { label: "New", value: countByStatus("new"), color: ORDER_STATUS_COLORS.new },
+          { label: "Reviewed", value: countByStatus("reviewed"), color: ORDER_STATUS_COLORS.reviewed },
+          { label: "Waiting", value: countByStatus("waiting_on_customer"), color: ORDER_STATUS_COLORS.waiting_on_customer },
+          { label: "Confirmed", value: countByStatus("confirmed"), color: ORDER_STATUS_COLORS.confirmed },
+          { label: "In Progress", value: countByStatus("in_progress"), color: ORDER_STATUS_COLORS.in_progress },
+          { label: "Ready", value: countByStatus("ready_for_pickup"), color: ORDER_STATUS_COLORS.ready_for_pickup },
+          { label: "Total", value: orders.length, color: T.brown },
+        ].map((s) => (
+          <div key={s.label} style={{ background: T.white, borderRadius: "10px", padding: "16px 12px", border: `1px solid ${T.border}`, textAlign: "center" }}>
+            <div style={{ fontFamily: "'Fraunces', serif", fontSize: "22px", fontWeight: 600, color: s.color }}>{s.value}</div>
+            <div style={{ fontFamily: "Outfit, sans-serif", fontSize: "11px", color: T.brownLight, marginTop: "2px" }}>{s.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* View toggle & filters */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px", flexWrap: "wrap", gap: "12px" }}>
+        <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", alignItems: "center" }}>
+          {view === "table" ? (
+            /* Table filters */
+            [{key: "all", label: "All"}, {key: "attention", label: `⚠ Needs Attention${attentionCount > 0 ? ` (${attentionCount})` : ""}`}, {key: "active", label: "Active"}, ...ORDER_STATUSES.map((s) => ({key: s, label: ORDER_STATUS_LABELS[s]}))].map((f) => (
+              <button key={f.key} onClick={() => setStatusFilter(f.key)} style={{ fontFamily: "Outfit, sans-serif", fontSize: "12px", fontWeight: statusFilter === f.key ? 500 : 400, padding: "5px 14px", borderRadius: "6px", border: `1px solid ${statusFilter === f.key ? (f.key === "attention" ? "#D4736C" : T.blue) : (f.key === "attention" && attentionCount > 0 ? "#D4736C" : T.border)}`, background: statusFilter === f.key ? (f.key === "attention" ? "#D4736C20" : T.blueSoft) : (f.key === "attention" && attentionCount > 0 ? "#D4736C10" : T.white), color: statusFilter === f.key ? (f.key === "attention" ? "#D4736C" : T.blueDeep) : (f.key === "attention" && attentionCount > 0 ? "#D4736C" : T.brownLight), cursor: "pointer" }}>{f.label}</button>
+            ))
+          ) : (
+            /* Kanban column toggles */
+            <>
+              <span style={{ fontFamily: "Outfit, sans-serif", fontSize: "12px", color: T.brownLight, marginRight: "4px" }}>Show:</span>
+              {activeStatuses.map((s) => (
+                <button key={s} onClick={() => toggleColumn(s)} style={{ fontFamily: "Outfit, sans-serif", fontSize: "12px", fontWeight: visibleColumns.includes(s) ? 500 : 400, padding: "5px 14px", borderRadius: "6px", border: `1px solid ${visibleColumns.includes(s) ? ORDER_STATUS_COLORS[s] : T.border}`, background: visibleColumns.includes(s) ? ORDER_STATUS_COLORS[s] + "20" : T.white, color: visibleColumns.includes(s) ? ORDER_STATUS_COLORS[s] : T.brownLight, cursor: "pointer" }}>{ORDER_STATUS_LABELS[s]}</button>
+              ))}
+            </>
+          )}
+        </div>
+        <div style={{ display: "flex", gap: "4px", background: T.white, borderRadius: "8px", border: `1px solid ${T.border}`, padding: "3px" }}>
+          <button onClick={() => setView("table")} style={{ fontFamily: "Outfit, sans-serif", fontSize: "13px", padding: "6px 16px", borderRadius: "6px", border: "none", background: view === "table" ? T.blueSoft : "transparent", color: view === "table" ? T.blueDeep : T.brownLight, cursor: "pointer", fontWeight: 500 }}>Table</button>
+          <button onClick={() => setView("kanban")} style={{ fontFamily: "Outfit, sans-serif", fontSize: "13px", padding: "6px 16px", borderRadius: "6px", border: "none", background: view === "kanban" ? T.blueSoft : "transparent", color: view === "kanban" ? T.blueDeep : T.brownLight, cursor: "pointer", fontWeight: 500 }}>Board</button>
+        </div>
+      </div>
+
+      {/* TABLE VIEW */}
+      {view === "table" && (
+        filtered.length === 0 ? (
+          <div style={{ background: T.white, borderRadius: "14px", padding: "48px", border: `1px solid ${T.border}`, textAlign: "center" }}>
+            <p style={{ fontFamily: "Outfit, sans-serif", fontSize: "15px", color: T.brownLight }}>No orders found.</p>
+          </div>
+        ) : (
+          <div style={{ background: T.white, borderRadius: "14px", border: `1px solid ${T.border}`, overflow: "hidden" }}>
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontFamily: "Outfit, sans-serif", fontSize: "14px" }}>
+                <thead>
+                  <tr style={{ background: T.cream, borderBottom: `1px solid ${T.border}` }}>
+                    {["Order #", "Customer", "Items", "Date Needed", "Status", "Payment", "Price", "Submitted"].map((h) => (
+                      <th key={h} style={{ padding: "12px 16px", textAlign: "left", fontWeight: 500, color: T.brownSoft, fontSize: "12px", textTransform: "uppercase", letterSpacing: "0.05em" }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map((o) => (
+                    <tr key={o.id} onClick={() => openDetail(o)} style={{ borderBottom: `1px solid ${T.border}`, cursor: "pointer", transition: "background 0.15s", background: orderNeedsAttention(o) ? "#D4736C08" : "" }} onMouseEnter={(e) => (e.currentTarget.style.background = T.cream)} onMouseLeave={(e) => (e.currentTarget.style.background = orderNeedsAttention(o) ? "#D4736C08" : "")}>
+                      <td style={{ padding: "14px 16px", fontWeight: 500, color: T.blueDeep, fontSize: "12px", whiteSpace: "nowrap" }}>{o.order_number || "—"}</td>
+                      <td style={{ padding: "14px 16px" }}>
+                        <div style={{ fontWeight: 500, color: T.brown, display: "flex", alignItems: "center", gap: "6px" }}>{o.customer_name}{orderNeedsAttention(o) && <span title={orderNeedsAttention(o)} style={{ color: "#D4736C", fontSize: "14px", cursor: "help" }}>⚠</span>}</div>
+                        <div style={{ fontSize: "12px", color: T.brownLight }}>{orderNeedsAttention(o) ? <span style={{ color: "#D4736C" }}>{orderNeedsAttention(o)}</span> : o.customer_email}</div>
+                      </td>
+                      <td style={{ padding: "14px 16px", color: T.brownSoft, maxWidth: "200px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{formatItems(o)}</td>
+                      <td style={{ padding: "14px 16px", color: T.brownSoft }}>{formatDate(o.event_date)}</td>
+                      <td style={{ padding: "14px 16px" }}>
+                        <select value={o.order_status} onClick={(e) => e.stopPropagation()} onChange={(e) => updateOrder(o.id, { order_status: e.target.value })} style={{ fontFamily: "Outfit, sans-serif", fontSize: "12px", padding: "4px 8px", borderRadius: "6px", border: `1px solid ${T.border}`, background: ORDER_STATUS_COLORS[o.order_status] + "20", color: ORDER_STATUS_COLORS[o.order_status], fontWeight: 500, cursor: "pointer" }}>
+                          {ORDER_STATUSES.map((s) => <option key={s} value={s}>{ORDER_STATUS_LABELS[s]}</option>)}
+                        </select>
+                      </td>
+                      <td style={{ padding: "14px 16px" }}>
+                        <span style={{ fontSize: "12px", padding: "3px 10px", borderRadius: "6px", background: PAYMENT_COLORS[o.payment_status] + "20", color: PAYMENT_COLORS[o.payment_status], fontWeight: 500 }}>{PAYMENT_LABELS[o.payment_status]}</span>
+                      </td>
+                      <td style={{ padding: "14px 16px", color: T.brownSoft, fontWeight: 500 }}>{o.price != null ? `$${Number(o.price).toFixed(2)}` : "—"}</td>
+                      <td style={{ padding: "14px 16px", color: T.brownLight, fontSize: "12px" }}>{formatDate(o.created_at)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )
+      )}
+
+      {/* KANBAN VIEW */}
+      {view === "kanban" && (
+        <div style={{ display: "flex", gap: "12px", overflowX: "auto", paddingBottom: "12px" }}>
+          {activeStatuses.filter((s) => visibleColumns.includes(s)).map((status) => {
+            const columnOrders = orders.filter((o) => o.order_status === status);
+            return (
+              <div key={status} style={{ minWidth: "220px", flex: "1", background: T.cream, borderRadius: "12px", border: `1px solid ${T.border}`, display: "flex", flexDirection: "column" }}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={async (e) => { e.preventDefault(); if (draggedId) { await updateOrder(draggedId, { order_status: status }); setDraggedId(null); } }}
+              >
+                <div style={{ padding: "14px 16px 10px", borderBottom: `1px solid ${T.border}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ fontFamily: "Outfit, sans-serif", fontSize: "13px", fontWeight: 600, color: ORDER_STATUS_COLORS[status] }}>{ORDER_STATUS_LABELS[status]}</span>
+                  <span style={{ fontSize: "11px", padding: "2px 8px", borderRadius: "10px", background: ORDER_STATUS_COLORS[status] + "20", color: ORDER_STATUS_COLORS[status], fontWeight: 500 }}>{columnOrders.length}</span>
+                </div>
+                <div style={{ padding: "8px", flex: 1, display: "flex", flexDirection: "column", gap: "8px", minHeight: "80px" }}>
+                  {columnOrders.map((o) => (
+                    <div key={o.id} draggable onDragStart={() => setDraggedId(o.id)} onClick={() => openDetail(o)}
+                      style={{ background: T.white, borderRadius: "10px", padding: "14px", border: `1px solid ${orderNeedsAttention(o) ? "#D4736C" : T.border}`, cursor: "grab", transition: "box-shadow 0.2s, transform 0.2s" }}
+                      onMouseEnter={(e) => { e.currentTarget.style.boxShadow = "0 4px 16px rgba(61,50,41,0.08)"; e.currentTarget.style.transform = "translateY(-1px)"; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.boxShadow = ""; e.currentTarget.style.transform = ""; }}
+                    >
+                      <div style={{ fontFamily: "Outfit, sans-serif", fontSize: "14px", fontWeight: 500, color: T.brown, marginBottom: "4px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>{o.customer_name}{orderNeedsAttention(o) && <span title={orderNeedsAttention(o)} style={{ color: "#D4736C", fontSize: "12px" }}>⚠</span>}</div>
+                      <div style={{ fontFamily: "Outfit, sans-serif", fontSize: "12px", color: T.brownLight, marginBottom: "6px" }}>{formatItems(o)}</div>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <span style={{ fontFamily: "Outfit, sans-serif", fontSize: "11px", color: T.brownLight }}>{formatDate(o.event_date)}</span>
+                        <span style={{ fontSize: "11px", padding: "2px 8px", borderRadius: "6px", background: PAYMENT_COLORS[o.payment_status] + "20", color: PAYMENT_COLORS[o.payment_status], fontWeight: 500 }}>{PAYMENT_LABELS[o.payment_status]}</span>
+                      </div>
+                      {o.price != null && <div style={{ fontFamily: "Outfit, sans-serif", fontSize: "13px", fontWeight: 500, color: T.brown, marginTop: "6px" }}>${Number(o.price).toFixed(2)}</div>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* ORDER DETAIL MODAL */}
+      {selectedOrder && (
+        <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(61,50,41,0.5)", backdropFilter: "blur(4px)", zIndex: 2000, display: "flex", alignItems: "center", justifyContent: "center", padding: "24px" }} onClick={() => setSelectedOrder(null)}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: T.white, borderRadius: "16px", maxWidth: "600px", width: "100%", padding: "32px", boxShadow: "0 20px 60px rgba(61,50,41,0.2)", maxHeight: "90vh", overflowY: "auto" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "20px" }}>
+              <div>
+                <h3 style={{ fontFamily: "'Fraunces', serif", fontSize: "22px", fontWeight: 500, color: T.brown, marginBottom: "4px" }}>{selectedOrder.customer_name}</h3>
+                <p style={{ fontFamily: "Outfit, sans-serif", fontSize: "13px", color: T.brownLight }}>{selectedOrder.order_number && <span style={{ color: T.blueDeep, fontWeight: 500 }}>{selectedOrder.order_number} · </span>}Order submitted {formatDate(selectedOrder.created_at)}</p>
+              </div>
+              <button onClick={() => setSelectedOrder(null)} style={{ background: "none", border: "none", fontSize: "24px", color: T.brownLight, cursor: "pointer", padding: "4px" }}>×</button>
+            </div>
+
+            {/* Contact info */}
+            <div style={{ background: T.cream, borderRadius: "10px", padding: "16px", marginBottom: "16px", border: `1px solid ${T.border}` }}>
+              <div style={{ fontFamily: "Outfit, sans-serif", fontSize: "12px", color: T.brownLight, marginBottom: "8px", textTransform: "uppercase", letterSpacing: "0.05em" }}>Contact</div>
+              <div style={{ fontFamily: "Outfit, sans-serif", fontSize: "14px", color: T.brown }}>
+                <div style={{ marginBottom: "4px" }}>Email: <a href={`mailto:${selectedOrder.customer_email}`} style={{ color: T.blueDeep }}>{selectedOrder.customer_email}</a></div>
+                {selectedOrder.customer_phone && <div>Phone: <a href={`tel:${selectedOrder.customer_phone}`} style={{ color: T.blueDeep }}>{selectedOrder.customer_phone}</a></div>}
+              </div>
+            </div>
+
+            {/* Order info */}
+            <div style={{ background: T.cream, borderRadius: "10px", padding: "16px", marginBottom: "16px", border: `1px solid ${T.border}` }}>
+              <div style={{ fontFamily: "Outfit, sans-serif", fontSize: "12px", color: T.brownLight, marginBottom: "8px", textTransform: "uppercase", letterSpacing: "0.05em" }}>Order Details</div>
+              <div style={{ fontFamily: "Outfit, sans-serif", fontSize: "14px", color: T.brown }}>
+                <div style={{ marginBottom: "4px" }}>Items: {formatItems(selectedOrder)}</div>
+                {selectedOrder.flavor && <div style={{ marginBottom: "4px" }}>Flavor: {selectedOrder.flavor}</div>}
+                <div style={{ marginBottom: "4px" }}>Date Needed: {formatDate(selectedOrder.event_date)}</div>
+                {selectedOrder.special_instructions && <div style={{ marginTop: "8px", padding: "10px", background: T.white, borderRadius: "8px", fontSize: "13px", color: T.brownSoft, lineHeight: 1.6 }}>{selectedOrder.special_instructions}</div>}
+              </div>
+            </div>
+
+            {/* Editable fields */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "16px" }}>
+              <div>
+                <label style={{ ...labelStyle, fontSize: "12px" }}>Status</label>
+                <select value={selectedOrder.order_status} onChange={(e) => { updateOrder(selectedOrder.id, { order_status: e.target.value }); setSelectedOrder({ ...selectedOrder, order_status: e.target.value }); }} style={{ ...inputStyle, fontSize: "13px", padding: "10px 12px" }}>
+                  {ORDER_STATUSES.map((s) => <option key={s} value={s}>{ORDER_STATUS_LABELS[s]}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={{ ...labelStyle, fontSize: "12px" }}>Payment Status</label>
+                <select value={editPayment} onChange={(e) => setEditPayment(e.target.value)} style={{ ...inputStyle, fontSize: "13px", padding: "10px 12px" }}>
+                  {Object.entries(PAYMENT_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                </select>
+              </div>
+            </div>
+            <div style={{ marginBottom: "16px" }}>
+              <label style={{ ...labelStyle, fontSize: "12px" }}>Price ($)</label>
+              <input type="number" step="0.01" value={editPrice} onChange={(e) => setEditPrice(e.target.value)} style={{ ...inputStyle, fontSize: "13px", padding: "10px 12px" }} placeholder="0.00" />
+            </div>
+            <div style={{ marginBottom: "20px" }}>
+              <label style={{ ...labelStyle, fontSize: "12px" }}>Internal Notes</label>
+              <textarea value={editNotes} onChange={(e) => setEditNotes(e.target.value)} rows={3} style={{ ...inputStyle, fontSize: "13px", padding: "10px 12px", resize: "vertical" }} placeholder="Notes about this order..." />
+            </div>
+
+            <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
+              <Btn onClick={saveDetail}>Save Changes</Btn>
+              <Btn variant="outline" onClick={() => setEmailConfirm({ email: selectedOrder.customer_email, subject: "Your Taylor Mountain Bakery Order" })}>Email Customer</Btn>
+              <Btn variant="outline" style={{ color: T.red, borderColor: T.red + "44" }} onClick={async () => { if (confirm("Permanently delete this order?")) { await deleteOrder(selectedOrder.id); setSelectedOrder(null); } }}>Delete</Btn>
+              <Btn variant="outline" onClick={() => setSelectedOrder(null)}>Cancel</Btn>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Email confirmation modal */}
+      {/* Email confirmation modal */}
+      {emailConfirm && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(61,50,41,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 3000, padding: "24px" }} onClick={() => setEmailConfirm(null)}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: T.white, borderRadius: "16px", maxWidth: "420px", width: "100%", padding: "32px", boxShadow: "0 20px 60px rgba(61,50,41,0.2)", textAlign: "center" }}>
+            <div style={{ fontSize: "32px", marginBottom: "12px" }}>✉️</div>
+            <h3 style={{ fontFamily: "'Fraunces', serif", fontSize: "20px", fontWeight: 500, color: T.brown, marginBottom: "12px" }}>Open Gmail to Email Customer</h3>
+            <p style={{ fontFamily: "Outfit, sans-serif", fontSize: "14px", color: T.brownSoft, lineHeight: 1.7, marginBottom: "8px" }}>This will open a new compose window in Gmail for:</p>
+            <p style={{ fontFamily: "Outfit, sans-serif", fontSize: "14px", fontWeight: 600, color: T.brown, marginBottom: "16px" }}>{emailConfirm.email}</p>
+            <div style={{ background: "#FFF3CD", borderRadius: "10px", padding: "12px 16px", marginBottom: "24px", border: "1px solid #FFE69C" }}>
+              <p style={{ fontFamily: "Outfit, sans-serif", fontSize: "13px", color: "#856404", lineHeight: 1.6, margin: 0 }}>Make sure you're signed into <strong>taylor.mtn.bakery@gmail.com</strong> in Gmail before sending.</p>
+            </div>
+            <div style={{ display: "flex", gap: "12px", justifyContent: "center" }}>
+              <Btn onClick={() => { window.open(`https://mail.google.com/mail/?view=cm&to=${encodeURIComponent(emailConfirm.email)}&su=${encodeURIComponent(emailConfirm.subject)}`, "_blank"); setEmailConfirm(null); }}>Open Gmail</Btn>
+              <Btn variant="outline" onClick={() => setEmailConfirm(null)}>Cancel</Btn>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Save confirmation modal with status dropdown */}
+      {saveConfirm && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(61,50,41,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 3000, padding: "24px" }} onClick={() => setSaveConfirm(false)}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: T.white, borderRadius: "16px", maxWidth: "420px", width: "100%", padding: "32px", boxShadow: "0 20px 60px rgba(61,50,41,0.2)" }}>
+            <h3 style={{ fontFamily: "'Fraunces', serif", fontSize: "20px", fontWeight: 500, color: T.brown, marginBottom: "16px" }}>Save Order Changes</h3>
+            <p style={{ fontFamily: "Outfit, sans-serif", fontSize: "14px", color: T.brownSoft, marginBottom: "16px" }}>Does the order status need to be updated?</p>
+            <div style={{ marginBottom: "20px" }}>
+              <label style={{ fontFamily: "Outfit, sans-serif", fontSize: "12px", color: T.brownLight, display: "block", marginBottom: "6px", textTransform: "uppercase", letterSpacing: "0.05em" }}>Current Status</label>
+              <select value={confirmStatus} onChange={(e) => setConfirmStatus(e.target.value)} style={{ fontFamily: "Outfit, sans-serif", fontSize: "14px", padding: "10px 12px", borderRadius: "8px", border: `1px solid ${T.border}`, background: ORDER_STATUS_COLORS[confirmStatus] + "20", color: ORDER_STATUS_COLORS[confirmStatus], fontWeight: 500, cursor: "pointer", width: "100%" }}>
+                {ORDER_STATUSES.map((s) => <option key={s} value={s}>{ORDER_STATUS_LABELS[s]}</option>)}
+              </select>
+            </div>
+            <div style={{ display: "flex", gap: "12px", justifyContent: "flex-end" }}>
+              <Btn variant="outline" onClick={() => setSaveConfirm(false)}>Cancel</Btn>
+              <Btn onClick={confirmSave}>Save</Btn>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Admin new order form */}
+      {showAdminForm && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(61,50,41,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 2000, padding: "24px" }} onClick={() => setShowAdminForm(false)}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: T.white, borderRadius: "16px", maxWidth: "600px", width: "100%", padding: "32px", boxShadow: "0 20px 60px rgba(61,50,41,0.2)", maxHeight: "90vh", overflowY: "auto" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "24px" }}>
+              <h3 style={{ fontFamily: "'Fraunces', serif", fontSize: "22px", fontWeight: 500, color: T.brown }}>New Order (In-Person / Phone)</h3>
+              <button onClick={() => setShowAdminForm(false)} style={{ background: "none", border: "none", fontSize: "24px", color: T.brownLight, cursor: "pointer" }}>×</button>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "12px" }}>
+              <div><label style={labelStyle}>Customer Name *</label><input value={adminForm.name} onChange={(e) => setAdminForm({ ...adminForm, name: e.target.value })} required style={inputStyle} placeholder="Customer name" /></div>
+              <div><label style={labelStyle}>Email</label><input type="email" value={adminForm.email} onChange={(e) => setAdminForm({ ...adminForm, email: e.target.value })} style={inputStyle} placeholder="customer@email.com" /></div>
+            </div>
+            <div style={{ marginBottom: "12px" }}><label style={labelStyle}>Phone</label><input value={adminForm.phone} onChange={(e) => setAdminForm({ ...adminForm, phone: e.target.value })} style={inputStyle} placeholder="Phone number" /></div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "12px", marginBottom: "12px" }}>
+              <div><label style={labelStyle}>Item Type *</label><input value={adminForm.itemType} onChange={(e) => setAdminForm({ ...adminForm, itemType: e.target.value })} style={inputStyle} placeholder="e.g. Cookies" /></div>
+              <div><label style={labelStyle}>Quantity</label><input value={adminForm.quantity} onChange={(e) => setAdminForm({ ...adminForm, quantity: e.target.value })} style={inputStyle} placeholder="e.g. 2 dozen" /></div>
+              <div><label style={labelStyle}>Flavor</label><input value={adminForm.flavor} onChange={(e) => setAdminForm({ ...adminForm, flavor: e.target.value })} style={inputStyle} placeholder="e.g. Chocolate Chip" /></div>
+            </div>
+            <div style={{ marginBottom: "12px" }}><label style={labelStyle}>Date Needed</label><input type="date" value={adminForm.date} onChange={(e) => setAdminForm({ ...adminForm, date: e.target.value })} style={inputStyle} /></div>
+            <div style={{ marginBottom: "12px" }}><label style={labelStyle}>Special Instructions</label><textarea value={adminForm.details} onChange={(e) => setAdminForm({ ...adminForm, details: e.target.value })} rows={2} style={{ ...inputStyle, resize: "vertical" }} placeholder="Any special requests..." /></div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "12px", marginBottom: "12px" }}>
+              <div>
+                <label style={labelStyle}>Price</label>
+                <input type="number" step="0.01" value={adminForm.price} onChange={(e) => setAdminForm({ ...adminForm, price: e.target.value })} style={inputStyle} placeholder="0.00" />
+              </div>
+              <div>
+                <label style={labelStyle}>Payment Status</label>
+                <select value={adminForm.payment} onChange={(e) => setAdminForm({ ...adminForm, payment: e.target.value })} style={{ ...inputStyle, cursor: "pointer" }}>
+                  {Object.entries(PAYMENT_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={labelStyle}>Order Status</label>
+                <select value={adminForm.status} onChange={(e) => setAdminForm({ ...adminForm, status: e.target.value })} style={{ ...inputStyle, cursor: "pointer" }}>
+                  {ORDER_STATUSES.map((s) => <option key={s} value={s}>{ORDER_STATUS_LABELS[s]}</option>)}
+                </select>
+              </div>
+            </div>
+            <div style={{ marginBottom: "20px" }}><label style={labelStyle}>Internal Notes</label><textarea value={adminForm.notes} onChange={(e) => setAdminForm({ ...adminForm, notes: e.target.value })} rows={2} style={{ ...inputStyle, resize: "vertical" }} placeholder="Internal notes..." /></div>
+            <div style={{ display: "flex", gap: "12px", justifyContent: "flex-end" }}>
+              <Btn variant="outline" onClick={() => setShowAdminForm(false)}>Cancel</Btn>
+              <Btn onClick={submitAdminOrder} disabled={!adminForm.name || !adminForm.itemType}>Create Order</Btn>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+};
+
+const AdminPage = ({ reviewsHook, ordersHook, setPage }) => {
   const { reviews, pending, pushed, approved, updateReview, deleteReview, loaded, avgRating, happyCount, fiveStarPct, totalApproved } = reviewsHook;
   const [authed, setAuthed] = useState(false);
   const [pw, setPw] = useState("");
   const [pwError, setPwError] = useState(false);
+  const [section, setSection] = useState("orders");
   const [tab, setTab] = useState("pending");
   const [replyTo, setReplyTo] = useState(null);
   const [replyMsg, setReplyMsg] = useState("");
@@ -487,7 +908,7 @@ const AdminPage = ({ reviewsHook, setPage }) => {
           <div style={{ background: T.white, borderRadius: "16px", padding: "48px 40px", border: `1px solid ${T.border}`, maxWidth: "400px", width: "100%", textAlign: "center" }}>
             <div style={{ marginBottom: "20px" }}>{Icons.shield}</div>
             <h2 style={{ fontFamily: "'Fraunces', serif", fontSize: "24px", fontWeight: 500, color: T.brown, marginBottom: "8px" }}>Owner Dashboard</h2>
-            <p style={{ fontFamily: "Outfit, sans-serif", fontSize: "14px", color: T.brownLight, marginBottom: "28px" }}>Enter your password to manage reviews.</p>
+            <p style={{ fontFamily: "Outfit, sans-serif", fontSize: "14px", color: T.brownLight, marginBottom: "28px" }}>Enter your password to manage your bakery.</p>
             <form onSubmit={handleLogin}>
               <input type="password" value={pw} onChange={(e) => { setPw(e.target.value); setPwError(false); }} style={{ ...inputStyle, textAlign: "center", marginBottom: "16px" }} placeholder="Password" onFocus={(e) => (e.target.style.borderColor = T.blue)} onBlur={(e) => (e.target.style.borderColor = T.border)} />
               {pwError && <p style={{ fontFamily: "Outfit, sans-serif", fontSize: "13px", color: T.red, marginBottom: "12px" }}>Incorrect password. Try again.</p>}
@@ -506,114 +927,130 @@ const AdminPage = ({ reviewsHook, setPage }) => {
   return (
     <div style={{ paddingTop: "100px" }}>
       <section style={{ padding: "40px 24px", background: `linear-gradient(180deg, ${T.brownSoft} 0%, ${T.brown} 100%)`, textAlign: "center" }}>
-        <h1 style={{ fontFamily: "'Fraunces', serif", fontSize: "32px", fontWeight: 500, color: T.cream, marginBottom: "8px" }}>Review Management</h1>
-        <p style={{ fontFamily: "Outfit, sans-serif", fontSize: "14px", color: T.brownLight }}>Approve, reject, reply, or push back customer reviews</p>
+        <h1 style={{ fontFamily: "'Fraunces', serif", fontSize: "32px", fontWeight: 500, color: T.cream, marginBottom: "12px" }}>Owner Dashboard</h1>
+        {/* Section switcher */}
+        <div style={{ display: "inline-flex", gap: "4px", background: "rgba(255,255,255,0.15)", borderRadius: "10px", padding: "4px" }}>
+          <button onClick={() => setSection("orders")} style={{ fontFamily: "Outfit, sans-serif", fontSize: "14px", fontWeight: 500, padding: "8px 24px", borderRadius: "8px", border: "none", background: section === "orders" ? T.white : "transparent", color: section === "orders" ? T.brown : "rgba(255,255,255,0.8)", cursor: "pointer", transition: "all 0.2s" }}>Orders {ordersHook.countByStatus("new") > 0 && <span style={{ marginLeft: "6px", background: T.red, color: T.white, fontSize: "11px", padding: "2px 7px", borderRadius: "8px" }}>{ordersHook.countByStatus("new")}</span>}</button>
+          <button onClick={() => setSection("reviews")} style={{ fontFamily: "Outfit, sans-serif", fontSize: "14px", fontWeight: 500, padding: "8px 24px", borderRadius: "8px", border: "none", background: section === "reviews" ? T.white : "transparent", color: section === "reviews" ? T.brown : "rgba(255,255,255,0.8)", cursor: "pointer", transition: "all 0.2s" }}>Reviews {pending.length > 0 && <span style={{ marginLeft: "6px", background: T.red, color: T.white, fontSize: "11px", padding: "2px 7px", borderRadius: "8px" }}>{pending.length}</span>}</button>
+        </div>
       </section>
 
       <section style={{ padding: "40px 24px 96px", background: T.cream }}>
-        <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
-          {/* Quick stats */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: "16px", marginBottom: "32px" }}>
-            {[
-              { label: "Avg Rating", value: avgRating },
-              { label: "Happy (4+★)", value: happyCount },
-              { label: "5-Star %", value: `${fiveStarPct}%` },
-              { label: "Pending", value: pending.length, highlight: pending.length > 0 },
-              { label: "Pushed Back", value: pushed.length },
-              { label: "Total Public", value: totalApproved },
-            ].map((s) => (
-              <div key={s.label} style={{ background: T.white, borderRadius: "12px", padding: "20px", border: `1px solid ${s.highlight ? T.red : T.border}`, textAlign: "center" }}>
-                <div style={{ fontFamily: "'Fraunces', serif", fontSize: "24px", fontWeight: 600, color: s.highlight ? T.red : T.brown }}>{s.value}</div>
-                <div style={{ fontFamily: "Outfit, sans-serif", fontSize: "12px", color: T.brownLight, marginTop: "4px" }}>{s.label}</div>
+        <div style={{ width: "100%", margin: "0 auto" }}>
+
+          {/* ORDERS SECTION */}
+          {section === "orders" && <OrdersAdmin ordersHook={ordersHook} />}
+
+          {/* REVIEWS SECTION */}
+          {section === "reviews" && (
+            <>
+              {/* Quick stats */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: "16px", marginBottom: "32px" }}>
+                {[
+                  { label: "Avg Rating", value: avgRating },
+                  { label: "Happy (4+★)", value: happyCount },
+                  { label: "5-Star %", value: `${fiveStarPct}%` },
+                  { label: "Pending", value: pending.length, highlight: pending.length > 0 },
+                  { label: "Pushed Back", value: pushed.length },
+                  { label: "Total Public", value: totalApproved },
+                ].map((s) => (
+                  <div key={s.label} style={{ background: T.white, borderRadius: "12px", padding: "20px", border: `1px solid ${s.highlight ? T.red : T.border}`, textAlign: "center" }}>
+                    <div style={{ fontFamily: "'Fraunces', serif", fontSize: "24px", fontWeight: 600, color: s.highlight ? T.red : T.brown }}>{s.value}</div>
+                    <div style={{ fontFamily: "Outfit, sans-serif", fontSize: "12px", color: T.brownLight, marginTop: "4px" }}>{s.label}</div>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
 
-          {/* Tabs */}
-          <div style={{ display: "flex", gap: "8px", marginBottom: "24px", flexWrap: "wrap" }}>
-            {[
-              { key: "pending", label: "Pending", count: pending.length },
-              { key: "pushed_back", label: "Pushed Back", count: pushed.length },
-              { key: "approved", label: "Approved", count: approved.length },
-              { key: "all", label: "All", count: reviews.length },
-            ].map((t) => (
-              <button key={t.key} onClick={() => setTab(t.key)}
-                style={{ fontFamily: "Outfit, sans-serif", fontSize: "14px", fontWeight: tab === t.key ? 500 : 400, padding: "8px 20px", borderRadius: "8px", border: `1.5px solid ${tab === t.key ? T.blue : T.border}`, background: tab === t.key ? T.blueSoft : T.white, color: tab === t.key ? T.blueDeep : T.brownSoft, cursor: "pointer", display: "flex", alignItems: "center", gap: "6px" }}
-              >{t.label} <span style={{ background: tab === t.key ? T.blueDeep : T.border, color: tab === t.key ? T.white : T.brownSoft, fontSize: "11px", padding: "2px 8px", borderRadius: "10px" }}>{t.count}</span></button>
-            ))}
-          </div>
+              {/* Tabs */}
+              <div style={{ display: "flex", gap: "8px", marginBottom: "24px", flexWrap: "wrap" }}>
+                {[
+                  { key: "pending", label: "Pending", count: pending.length },
+                  { key: "pushed_back", label: "Pushed Back", count: pushed.length },
+                  { key: "approved", label: "Approved", count: approved.length },
+                  { key: "all", label: "All", count: reviews.length },
+                ].map((t) => (
+                  <button key={t.key} onClick={() => setTab(t.key)}
+                    style={{ fontFamily: "Outfit, sans-serif", fontSize: "14px", fontWeight: tab === t.key ? 500 : 400, padding: "8px 20px", borderRadius: "8px", border: `1.5px solid ${tab === t.key ? T.blue : T.border}`, background: tab === t.key ? T.blueSoft : T.white, color: tab === t.key ? T.blueDeep : T.brownSoft, cursor: "pointer", display: "flex", alignItems: "center", gap: "6px" }}
+                  >{t.label} <span style={{ background: tab === t.key ? T.blueDeep : T.border, color: tab === t.key ? T.white : T.brownSoft, fontSize: "11px", padding: "2px 8px", borderRadius: "10px" }}>{t.count}</span></button>
+                ))}
+              </div>
 
-          {/* Review list */}
-          {tabReviews.length === 0 ? (
-            <div style={{ background: T.white, borderRadius: "16px", padding: "48px", border: `1px solid ${T.border}`, textAlign: "center" }}>
-              <p style={{ fontFamily: "Outfit, sans-serif", fontSize: "15px", color: T.brownLight }}>No reviews in this category.</p>
-            </div>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-              {tabReviews.map((r) => (
-                <div key={r.id} style={{ background: T.white, borderRadius: "14px", padding: "24px", border: `1px solid ${r.rating < 4 && r.status === "pending" ? T.red + "44" : T.border}` }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "12px", marginBottom: "12px" }}>
-                    <div>
-                      <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "4px" }}>
-                        <span style={{ fontFamily: "'Fraunces', serif", fontSize: "17px", fontWeight: 500, color: T.brown }}>{r.reviewer_name}</span>
-                        <span style={{ fontSize: "12px", padding: "3px 10px", borderRadius: "6px", background: statusColor(r.status) + "20", color: statusColor(r.status), fontFamily: "Outfit, sans-serif", fontWeight: 500 }}>{statusLabel(r.status)}</span>
-                        {r.rating < 4 && <span style={{ display: "flex", alignItems: "center", gap: "4px", fontSize: "12px", color: T.red, fontFamily: "Outfit, sans-serif" }}>{Icons.alert} Low rating</span>}
+              {/* Review list */}
+              {tabReviews.length === 0 ? (
+                <div style={{ background: T.white, borderRadius: "16px", padding: "48px", border: `1px solid ${T.border}`, textAlign: "center" }}>
+                  <p style={{ fontFamily: "Outfit, sans-serif", fontSize: "15px", color: T.brownLight }}>No reviews in this category.</p>
+                </div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                  {tabReviews.map((r) => (
+                    <div key={r.id} style={{ background: T.white, borderRadius: "14px", padding: "24px", border: `1px solid ${r.rating < 4 && r.status === "pending" ? T.red + "44" : T.border}` }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "12px", marginBottom: "12px" }}>
+                        <div>
+                          <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "4px" }}>
+                            <span style={{ fontFamily: "'Fraunces', serif", fontSize: "17px", fontWeight: 500, color: T.brown }}>{r.reviewer_name}</span>
+                            <span style={{ fontSize: "12px", padding: "3px 10px", borderRadius: "6px", background: statusColor(r.status) + "20", color: statusColor(r.status), fontFamily: "Outfit, sans-serif", fontWeight: 500 }}>{statusLabel(r.status)}</span>
+                            {r.rating < 4 && <span style={{ display: "flex", alignItems: "center", gap: "4px", fontSize: "12px", color: T.red, fontFamily: "Outfit, sans-serif" }}>{Icons.alert} Low rating</span>}
+                          </div>
+                          <div style={{ fontFamily: "Outfit, sans-serif", fontSize: "12px", color: T.brownLight }}>{r.reviewer_email || "No email"} · {r.item || "No item"} · {new Date(r.created_at).toLocaleDateString()}</div>
+                        </div>
+                        <StarDisplay rating={r.rating} />
                       </div>
-                      <div style={{ fontFamily: "Outfit, sans-serif", fontSize: "12px", color: T.brownLight }}>{r.reviewer_email || "No email"} · {r.item || "No item"} · {new Date(r.created_at).toLocaleDateString()}</div>
+                      <p style={{ fontFamily: "Outfit, sans-serif", fontSize: "14px", color: T.brownSoft, lineHeight: 1.7, marginBottom: "16px", padding: "12px 16px", background: T.cream, borderRadius: "8px" }}>{r.review_text}</p>
+
+                      {/* Action buttons */}
+                      <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                        {r.status !== "approved" && <Btn style={{ padding: "8px 18px", fontSize: "13px" }} onClick={() => updateReview(r.id, { status: "approved" })}>✓ Approve</Btn>}
+                        {r.status !== "rejected" && <Btn variant="danger" style={{ padding: "8px 18px", fontSize: "13px" }} onClick={() => updateReview(r.id, { status: "rejected" })}>✕ Reject</Btn>}
+                        {r.reviewer_email && <Btn variant="outline" style={{ padding: "8px 18px", fontSize: "13px" }} onClick={() => { setReplyTo(r); setReplyMsg(""); }}>✉ Reply</Btn>}
+                        {r.reviewer_email && r.status !== "approved" && <Btn variant="wood" style={{ padding: "8px 18px", fontSize: "13px" }} onClick={() => { setPushbackTo(r); setPushbackMsg(`Hi ${r.reviewer_name},\n\nThank you for your feedback. We took your comments to heart and would love the chance to make it right. We'd be so grateful if you'd consider updating your review based on your experience.\n\nThank you!\nTaylor Mountain Bakery`); }}>↩ Push Back for Update</Btn>}
+                        <Btn variant="outline" style={{ padding: "8px 18px", fontSize: "13px", color: T.red, borderColor: T.red + "44" }} onClick={() => { if (confirm("Permanently delete this review?")) deleteReview(r.id); }}>Delete</Btn>
+                      </div>
                     </div>
-                    <StarDisplay rating={r.rating} />
+                  ))}
+                </div>
+              )}
+
+              {/* Reply modal */}
+              {replyTo && (
+                <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(61,50,41,0.5)", backdropFilter: "blur(4px)", zIndex: 2000, display: "flex", alignItems: "center", justifyContent: "center", padding: "24px" }} onClick={() => setReplyTo(null)}>
+                  <div onClick={(e) => e.stopPropagation()} style={{ background: T.white, borderRadius: "16px", maxWidth: "500px", width: "100%", padding: "32px", boxShadow: "0 20px 60px rgba(61,50,41,0.2)" }}>
+                    <h3 style={{ fontFamily: "'Fraunces', serif", fontSize: "20px", fontWeight: 500, color: T.brown, marginBottom: "8px" }}>Reply to {replyTo.reviewer_name}</h3>
+                    <p style={{ fontFamily: "Outfit, sans-serif", fontSize: "13px", color: T.brownLight, marginBottom: "20px" }}>This will open Gmail to send a reply to {replyTo.reviewer_email}</p>
+                    <textarea value={replyMsg} onChange={(e) => setReplyMsg(e.target.value)} rows={5} style={{ ...inputStyle, resize: "vertical", marginBottom: "16px" }} placeholder="Write your reply..." />
+                    <div style={{ background: "#FFF3CD", borderRadius: "10px", padding: "10px 14px", marginBottom: "16px", border: "1px solid #FFE69C" }}>
+                      <p style={{ fontFamily: "Outfit, sans-serif", fontSize: "12px", color: "#856404", lineHeight: 1.5, margin: 0 }}>Make sure you're signed into <strong>taylor.mtn.bakery@gmail.com</strong> in Gmail before sending.</p>
+                    </div>
+                    <div style={{ display: "flex", gap: "12px" }}>
+                      <Btn onClick={() => window.open(`https://mail.google.com/mail/?view=cm&to=${encodeURIComponent(replyTo.reviewer_email)}&su=${encodeURIComponent("Thank you for your review! — Taylor Mountain Bakery")}&body=${encodeURIComponent(replyMsg)}`, "_blank")}>Open in Gmail</Btn>
+                      <Btn variant="outline" onClick={() => setReplyTo(null)}>Cancel</Btn>
+                    </div>
                   </div>
-                  <p style={{ fontFamily: "Outfit, sans-serif", fontSize: "14px", color: T.brownSoft, lineHeight: 1.7, marginBottom: "16px", padding: "12px 16px", background: T.cream, borderRadius: "8px" }}>{r.review_text}</p>
+                </div>
+              )}
 
-                  {/* Action buttons */}
-                  <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-                    {r.status !== "approved" && <Btn style={{ padding: "8px 18px", fontSize: "13px" }} onClick={() => updateReview(r.id, { status: "approved" })}>✓ Approve</Btn>}
-                    {r.status !== "rejected" && <Btn variant="danger" style={{ padding: "8px 18px", fontSize: "13px" }} onClick={() => updateReview(r.id, { status: "rejected" })}>✕ Reject</Btn>}
-                    {r.reviewer_email && <Btn variant="outline" style={{ padding: "8px 18px", fontSize: "13px" }} onClick={() => { setReplyTo(r); setReplyMsg(""); }}>✉ Reply</Btn>}
-                    {r.reviewer_email && r.status !== "approved" && <Btn variant="wood" style={{ padding: "8px 18px", fontSize: "13px" }} onClick={() => { setPushbackTo(r); setPushbackMsg(`Hi ${r.reviewer_name},\n\nThank you for your feedback. We took your comments to heart and would love the chance to make it right. We'd be so grateful if you'd consider updating your review based on your experience.\n\nThank you!\nTaylor Mountain Bakery`); }}>↩ Push Back for Update</Btn>}
-                    <Btn variant="outline" style={{ padding: "8px 18px", fontSize: "13px", color: T.red, borderColor: T.red + "44" }} onClick={() => { if (confirm("Permanently delete this review?")) deleteReview(r.id); }}>Delete</Btn>
+              {/* Push-back modal */}
+              {pushbackTo && (
+                <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(61,50,41,0.5)", backdropFilter: "blur(4px)", zIndex: 2000, display: "flex", alignItems: "center", justifyContent: "center", padding: "24px" }} onClick={() => setPushbackTo(null)}>
+                  <div onClick={(e) => e.stopPropagation()} style={{ background: T.white, borderRadius: "16px", maxWidth: "540px", width: "100%", padding: "32px", boxShadow: "0 20px 60px rgba(61,50,41,0.2)" }}>
+                    <h3 style={{ fontFamily: "'Fraunces', serif", fontSize: "20px", fontWeight: 500, color: T.brown, marginBottom: "8px" }}>Push Back to {pushbackTo.reviewer_name}</h3>
+                    <p style={{ fontFamily: "Outfit, sans-serif", fontSize: "13px", color: T.brownLight, marginBottom: "4px" }}>This will mark the review as "Pushed Back." You can reach out to the customer manually using the email below.</p>
+                    <p style={{ fontFamily: "Outfit, sans-serif", fontSize: "12px", color: T.blueDeep, marginBottom: "20px" }}>The original review will not be published. If they resubmit, it will appear as a new pending review.</p>
+                    <div style={{ background: T.cream, borderRadius: "10px", padding: "16px", marginBottom: "16px", border: `1px solid ${T.border}` }}>
+                      <p style={{ fontFamily: "Outfit, sans-serif", fontSize: "13px", color: T.brownLight, marginBottom: "6px" }}>Customer email:</p>
+                      <p style={{ fontFamily: "Outfit, sans-serif", fontSize: "15px", color: T.brown, fontWeight: 500, wordBreak: "break-all" }}>{pushbackTo.reviewer_email}</p>
+                      <Btn variant="outline" style={{ marginTop: "10px", fontSize: "13px" }} onClick={() => { navigator.clipboard.writeText(pushbackTo.reviewer_email); }}>Copy Email</Btn>
+                    </div>
+                    <div style={{ display: "flex", gap: "12px" }}>
+                      <Btn onClick={async () => {
+                        await updateReview(pushbackTo.id, { status: "pushed_back" });
+                        setPushbackTo(null);
+                      }}>Mark as Pushed Back</Btn>
+                      <Btn variant="outline" onClick={() => setPushbackTo(null)}>Cancel</Btn>
+                    </div>
                   </div>
                 </div>
-              ))}
-            </div>
-          )}
-
-          {/* Reply modal */}
-          {replyTo && (
-            <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(61,50,41,0.5)", backdropFilter: "blur(4px)", zIndex: 2000, display: "flex", alignItems: "center", justifyContent: "center", padding: "24px" }} onClick={() => setReplyTo(null)}>
-              <div onClick={(e) => e.stopPropagation()} style={{ background: T.white, borderRadius: "16px", maxWidth: "500px", width: "100%", padding: "32px", boxShadow: "0 20px 60px rgba(61,50,41,0.2)" }}>
-                <h3 style={{ fontFamily: "'Fraunces', serif", fontSize: "20px", fontWeight: 500, color: T.brown, marginBottom: "8px" }}>Reply to {replyTo.reviewer_name}</h3>
-                <p style={{ fontFamily: "Outfit, sans-serif", fontSize: "13px", color: T.brownLight, marginBottom: "20px" }}>This will open your email client to send a reply to {replyTo.reviewer_email}</p>
-                <textarea value={replyMsg} onChange={(e) => setReplyMsg(e.target.value)} rows={5} style={{ ...inputStyle, resize: "vertical", marginBottom: "16px" }} placeholder="Write your reply..." />
-                <div style={{ display: "flex", gap: "12px" }}>
-                  <a href={`mailto:${replyTo.reviewer_email}?subject=Thank you for your review! — Taylor Mountain Bakery&body=${encodeURIComponent(replyMsg)}`} style={{ textDecoration: "none" }}><Btn>Open in Email</Btn></a>
-                  <Btn variant="outline" onClick={() => setReplyTo(null)}>Cancel</Btn>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Push-back modal */}
-          {pushbackTo && (
-            <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(61,50,41,0.5)", backdropFilter: "blur(4px)", zIndex: 2000, display: "flex", alignItems: "center", justifyContent: "center", padding: "24px" }} onClick={() => setPushbackTo(null)}>
-              <div onClick={(e) => e.stopPropagation()} style={{ background: T.white, borderRadius: "16px", maxWidth: "540px", width: "100%", padding: "32px", boxShadow: "0 20px 60px rgba(61,50,41,0.2)" }}>
-                <h3 style={{ fontFamily: "'Fraunces', serif", fontSize: "20px", fontWeight: 500, color: T.brown, marginBottom: "8px" }}>Push Back to {pushbackTo.reviewer_name}</h3>
-                <p style={{ fontFamily: "Outfit, sans-serif", fontSize: "13px", color: T.brownLight, marginBottom: "4px" }}>This will mark the review as "Pushed Back." You can reach out to the customer manually using the email below.</p>
-                <p style={{ fontFamily: "Outfit, sans-serif", fontSize: "12px", color: T.blueDeep, marginBottom: "20px" }}>The original review will not be published. If they resubmit, it will appear as a new pending review.</p>
-                <div style={{ background: T.cream, borderRadius: "10px", padding: "16px", marginBottom: "16px", border: `1px solid ${T.border}` }}>
-                  <p style={{ fontFamily: "Outfit, sans-serif", fontSize: "13px", color: T.brownLight, marginBottom: "6px" }}>Customer email:</p>
-                  <p style={{ fontFamily: "Outfit, sans-serif", fontSize: "15px", color: T.brown, fontWeight: 500, wordBreak: "break-all" }}>{pushbackTo.reviewer_email}</p>
-                  <Btn variant="outline" style={{ marginTop: "10px", fontSize: "13px" }} onClick={() => { navigator.clipboard.writeText(pushbackTo.reviewer_email); }}>Copy Email</Btn>
-                </div>
-                <div style={{ display: "flex", gap: "12px" }}>
-                  <Btn onClick={async () => {
-                    await updateReview(pushbackTo.id, { status: "pushed_back" });
-                    setPushbackTo(null);
-                  }}>Mark as Pushed Back</Btn>
-                  <Btn variant="outline" onClick={() => setPushbackTo(null)}>Cancel</Btn>
-                </div>
-              </div>
-            </div>
+              )}
+            </>
           )}
         </div>
       </section>
@@ -628,13 +1065,28 @@ const OrderPage = () => {
   const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
   const handleSubmit = async (e) => {
     e.preventDefault(); setStatus("sending");
-    // Notify owner
-    const ok = await sendEmail(CONFIG.EMAILJS_TEMPLATE_ID, { from_name: form.name, from_email: form.email, phone: form.phone, item_type: form.itemType, quantity: form.quantity, flavor: form.flavor, date_needed: form.date, details: form.details });
-    // Send branded confirmation to customer
+    // Save order to Supabase
+    const orderNumber = await generateOrderNumber();
+    const { error: dbError } = await supabase.from("orders").insert([{
+      order_number: orderNumber,
+      customer_name: form.name,
+      customer_email: form.email,
+      customer_phone: form.phone,
+      items: [{ type: form.itemType, quantity: form.quantity, flavor: form.flavor }],
+      quantity: form.quantity,
+      flavor: form.flavor,
+      event_date: form.date || null,
+      special_instructions: form.details,
+      order_status: "new",
+      payment_status: "unpaid"
+    }]);
+    if (dbError) { console.error("Order insert failed:", dbError); setStatus("error"); return; }
+    // Notify owner (best-effort — order is already saved)
+    await sendEmail(CONFIG.EMAILJS_TEMPLATE_ID, { from_name: form.name, from_email: form.email, phone: form.phone, item_type: form.itemType, quantity: form.quantity, flavor: form.flavor, date_needed: form.date, details: form.details });
+    // Send branded confirmation to customer (best-effort)
     await sendEmail(CONFIG.EMAILJS_ORDER_CONFIRM_ID, { to_name: form.name, to_email: form.email, item_type: form.itemType, quantity: form.quantity, flavor: form.flavor, date_needed: form.date, details: form.details });
     if (!emailjsActive()) await new Promise((r) => setTimeout(r, 1200));
-    if (ok || !emailjsActive()) { setStatus("success"); setForm({ name: "", email: "", phone: "", itemType: "", quantity: "", flavor: "", date: "", details: "" }); }
-    else setStatus("error");
+    setStatus("success"); setForm({ name: "", email: "", phone: "", itemType: "", quantity: "", flavor: "", date: "", details: "" });
   };
 
   return (
@@ -699,7 +1151,7 @@ const AboutPage = ({ setPage }) => (
       <p style={{ fontFamily: "Outfit, sans-serif", fontSize: "16px", color: T.brownSoft, maxWidth: "500px", margin: "0 auto 48px", lineHeight: 1.7 }}>A small-town bakery with a big heart, started by a high school junior with a passion for baking.</p>
     </section>
     <section style={{ padding: "80px 24px", background: T.cream }}>
-      <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
+      <div style={{ maxWidth: "1600px", margin: "0 auto" }}>
         <div style={{ background: T.white, borderRadius: "16px", padding: "48px 40px", border: `1px solid ${T.border}`, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: "40px", alignItems: "center", marginBottom: "32px" }}>
           <div>
             <div style={{ marginBottom: "16px" }}>{Icons.wheat}</div>
@@ -741,7 +1193,7 @@ const ContactPage = () => {
         <p style={{ fontFamily: "Outfit, sans-serif", fontSize: "16px", color: T.brownSoft, maxWidth: "500px", margin: "0 auto 48px", lineHeight: 1.7 }}>Have a question or need help with an order? We'd love to hear from you!</p>
       </section>
       <section style={{ padding: "60px 24px 96px", background: T.cream }}>
-        <div style={{ maxWidth: "1200px", margin: "0 auto", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: "40px" }}>
+        <div style={{ maxWidth: "1600px", margin: "0 auto", display: "grid", gridTemplateColumns: "1fr 2fr", gap: "40px" }}>
           <div>
             <h3 style={{ fontFamily: "'Fraunces', serif", fontSize: "24px", fontWeight: 500, color: T.brown, marginBottom: "28px" }}>Let's Connect</h3>
             <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
@@ -789,6 +1241,7 @@ const ContactPage = () => {
 export default function App() {
   const [page, setPage] = useState("Home");
   const reviewsHook = useReviews();
+  const ordersHook = useOrders();
 
   return (
     <div style={{ background: T.cream, minHeight: "100vh", fontFamily: "Outfit, sans-serif" }}>
@@ -800,8 +1253,8 @@ export default function App() {
       {page === "Reviews" && <ReviewsPage setPage={setPage} reviewsHook={reviewsHook} />}
       {page === "About" && <AboutPage setPage={setPage} />}
       {page === "Contact" && <ContactPage />}
-      {page === "Admin" && <AdminPage reviewsHook={reviewsHook} setPage={setPage} />}
-      <Footer setPage={setPage} pendingCount={reviewsHook.pending.length} />
+      {page === "Admin" && <AdminPage reviewsHook={reviewsHook} ordersHook={ordersHook} setPage={setPage} />}
+      <Footer setPage={setPage} pendingCount={reviewsHook.pending.length} newOrderCount={ordersHook.countByStatus("new")} attentionCount={ordersHook.attentionCount} />
     </div>
   );
 }
